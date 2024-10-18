@@ -1,0 +1,28 @@
+Directory contains:
+
+----------------------------------------
+kallisto_ULK.sh
+- Ran on Uppmax
+- Inputs:
+	- raw reads (../data/fastq/)
+	- Reference Homo_sapiens.GRCh38.cdna.all.fa.gz (or indexed) 
+	- Metadata table, with file names (../meta/metadata.txt)
+1. Generates kallisto index from ref (unless it exists)
+2. Trim galore -> generates trimmed reads (../data/trimmed/)
+3. Pseudoaligns with kallisto (../data/kallisto_out/)
+
+----------------------------------------
+
+Log files
+- slurm-50837104.out
+- slurm-50844331.out
+- Two runs, first for trimgalore, second for kallisto, because named metadata.txt wrong first :)
+
+----------------------------------------
+
+make_tx2gene_from_reference.sh
+- Create tx2gene df from same reference used to create idx for alignment
+- [https://nbisweden.github.io/workshop-RNAseq/2011/]
+- Create table used to assign transcripts to genes
+
+----------------------------------------

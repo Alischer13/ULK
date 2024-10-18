@@ -1,0 +1,155 @@
+---
+title: "DE"
+output: html_document
+date: "2024-10-17"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Due to conflict between newer dbplyr and biomaR (https://support.bioconductor.org/p/9154901/):
+```{r}
+#source("https://pak.r-lib.org/install.R")
+#if (!require("BiocManager", quietly = TRUE))
+#    install.packages("BiocManager")
+
+#renv::install("dbplyr@2.3.4")
+#pak::pkg_install("dplyr")
+#pak::pkg_install("biomaRt")
+#pak::pkg_install("GenomeInfoDbData")
+#pak::pkg_install("tximport")
+#pak::pkg_install("rhdf5")
+#pak::pkg_install("ggplot2")
+#pak::pkg_install("DESeq2")
+#pak::pkg_install("tidyr")
+```
+
+
+```{r}
+library(dplyr)
+library(dbplyr)
+library(biomaRt)
+library(tximport)
+library(rhdf5)
+library(ggplot2)
+library(DESeq2)
+library(tidyr)
+```
+
+
+```{r}
+getwd()
+```
+
+# Metadata
+```{r}
+metadata <- read.table("../meta/meta_samples.txt", header = TRUE)
+metadata 
+```
+
+
+# Find files and read in abundancies
+```{r}
+# Locate abundance files
+kallisto_path <- "../kallisto_run_no_HDF5/kallisto_output/"
+files <- paste(kallisto_path, list.files(path=kallisto_path, pattern="abundance.tsv", recursive = TRUE), sep = "/")
+names(files) <- metadata$sample
+
+# Assign transcripts to genes
+tx2gene <- read.csv("../reference/tx2gene.GRCh38.cdna.csv")
+txi.kallisto.tsv <- tximport(files, type = "kallisto", tx2gene = tx2gene, ignoreAfterBar = TRUE)
+head(txi.kallisto.tsv$counts)
+```
+
+
+
+# Filter low abundancies
+# 2.1 Filter genes with low TPM values
+# Filter count matrix (txi.kallisto$counts) using TPM info (txi.kallisto$abundance)
+```{r}
+# FILTER ZEROS - only exlcude rows with no observed abundance across all columns:
+tpms_filtered <- txi.kallisto.tsv$abundance[rowSums(txi.kallisto.tsv$abundance[,0:ncol(txi.kallisto.tsv$abundance)]>0)>0, ]
+
+count_matrix <- as.data.frame(txi.kallisto.tsv$counts[rownames(tpms_filtered),])
+
+# Extract round count matrix Kallisto takes discrete values (and remove gene version numbers)
+count_matrix <- round(count_matrix)
+rownames(count_matrix) <- gsub("\\.\\d+$", "", as.character(rownames(count_matrix)))
+
+# Number genes filtered out
+dim(txi.kallisto.tsv$counts)
+dim(count_matrix)
+
+pdf(file="../results/DE/boxplot_raw_counts.pdf", width = 10, height = 4)
+boxplot(log2(as.matrix(txi.kallisto.tsv$counts)+1),ylab=expression('Log'[2]~'Read counts'),las=2,main="Unfiltered data", cex.axis=0.8)
+dev.off()
+
+pdf(file="../results/DE/boxplot_filtered_counts.pdf", width = 10, height = 4)
+boxplot(log2(as.matrix(count_matrix)+1),ylab=expression('Log'[2]~'Read counts'),las=2,main="Filtered data", cex.axis=0.8)
+dev.off()
+```
+
+# Convert transcript IDs into gene symbols
+# Extract count matrix and remove gene version number (ensembl won't recognize)
+```{r}
+# Get ensembl df, take gene id and gene symbols
+ensembl = useMart("ensembl", host="https://www.ensembl.org", dataset="hsapiens_gene_ensembl")
+```
+
+
+
+```{r}
+CM <- as.matrix(count_matrix)
+dim(CM)
+
+# Retrieve Ensembl gene IDs and gene names
+ensembl_df <- biomaRt::getBM(attributes=c("ensembl_gene_id", "external_gene_name"), values=rownames(CM), mart=ensembl)
+
+# Keep symbols present in count matrix
+my_genes_ann = ensembl_df[match(rownames(CM), ensembl_df$ensembl_gene_id),]
+
+# Add external gene name symbols to count matrix
+rownames(CM) <- my_genes_ann$external_gene_name
+
+# Remove NA rows
+CM <- CM[!is.na(rownames(CM)),] 
+group <- rownames(CM)
+CM <- rowsum(CM, group) # Sum rows with same gene symbols
+
+write.csv(CM, "../results/DE/count_matrix.csv", row.names = TRUE)
+dim(CM)
+```
+
+# Get TPMs, filter and convert to gene symbols
+```{r}
+# ZEROs FILTER - only exlcude rows with no observed abundance across all columns:
+tpms_filtered <- txi.kallisto.tsv$abundance[rowSums(txi.kallisto.tsv$abundance[,0:ncol(txi.kallisto.tsv$abundance)]>0)> 0, ]
+
+# Filter tpms and convert to gene symbols
+rownames(tpms_filtered) <- gsub("\\.\\d+$", "", as.character(rownames(tpms_filtered)))
+tpms_filtered <- as.matrix(tpms_filtered)
+
+# TPMs
+my_genes_ann = ensembl_df[match(rownames(tpms_filtered), ensembl_df$ensembl_gene_id),]
+rownames(tpms_filtered) <- my_genes_ann$external_gene_name
+
+# Sum rows with same gene symbol
+tpms_filtered <- tpms_filtered[!is.na(rownames(tpms_filtered)),] # Remove NA rows
+group <- rownames(tpms_filtered)
+
+tpms_filtered <- rowsum(tpms_filtered, group) #summerar gener med samma gensymbol
+dim(tpms_filtered)
+
+write.csv(tpms_filtered, "../results/DE/tpms.csv")
+```
+
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+# DESEQ 2
+------------------------------------------------------------------------------------------------------------------------------------
+
+
+
+

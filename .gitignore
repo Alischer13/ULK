@@ -47,3 +47,42 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# Other
+.DS_Store
+meta/Samples_20241011.xlsx
+meta/multiqc_report.html
+
+data/fastq/*
+!data/fastq/.gitkeep
+
+data/kallisto_out/*
+!data/kallisto_out/.gitkeep
+
+data/trimmed/*
+!data/trimmed/.gitkeep
+
+results/*
+!results/.gitkeep
+
+meta/*
+!meta/metadata.txt
+
+reference/*
+!reference/info_ref.txt
+
+scripts/slurm-50837104.out
+scripts/slurm-50844331.out
+
+R_scripts/.Rprofile
+R_scripts/R_scripts.Rproj
+R_scripts/renv.lock
+R_scripts/renv/
+
+
+
+
+
+
+
+
