@@ -1,0 +1,71 @@
+---
+title: "Pathview"
+output: html_document
+date: "2024-12-09"
+info: View KEGG pathway genes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pathview)
+```
+
+Run initial pathview on autophagy -> save values & identify abs(max) value to set new color label range
+```{r}
+# Read in Vulko vs Expi data
+df = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv")
+df <- df %>% filter(padj<0.05)
+
+# Prepare data for pathview
+log2FC <-df$log2FoldChange
+names(log2FC) <- df$X
+
+# Run pathview
+pv.out <- pathview(
+  gene.data = log2FC, 
+  pathway.id = '04140', 
+  species = "hsa", 
+  gene.idtype = "symbol"
+)
+
+# Save genes included in pathway & values
+write.csv(pv.out$plot.data.gene, "../results/pathview/pathview.csv")
+```
+Function to round up to closest 1 digit (ex 3.04 -> 3.1) to ensure whole range is within color label
+```{r}
+round_up <- function(x) {
+  scale <- 10^1
+  ceiling(x * scale) / scale
+}
+
+# Extract gene log2FC
+log2FC <- pv.out$plot.data.gene
+
+# Find abs(max) gene value and round up to nearest 1 digit
+max_val <- round_up(max(abs(log2FC$mol.data), na.rm = TRUE))
+
+max_val
+```
+
+Rerun pathview with updated limit range
+```{r}
+# Read in Vulko vs Expi data
+df = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv")
+df <- df %>% filter(padj<0.05)
+
+# Prepare data for pathview
+log2FC <-df$log2FoldChange
+names(log2FC) <- df$X
+
+# Run pathview
+pv.out <- pathview(
+  gene.data = log2FC, 
+  pathway.id = '04140', 
+  species = "hsa", 
+  gene.idtype = "symbol",
+  limit = max_val
+)
+```
