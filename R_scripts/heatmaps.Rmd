@@ -1,0 +1,114 @@
+---
+title: "Heatmap of gene expressions"
+output: html_document
+date: "2024-11-13"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(org.Hs.eg.db)
+library(AnnotationDbi)
+library(pheatmap)
+library(dplyr)
+library(dbplyr)
+library(tidyr)
+```
+
+Plot log2FC of genes related to autophagy (GO:0006914) as heatmap for the three transiently produced proteins in Vulko cs Expi
+```{r}
+ontology <- "GO:0006914" # Autophagy
+retrieved <- AnnotationDbi::select(org.Hs.eg.db, keytype="GOALL", keys=ontology, columns="SYMBOL")
+
+# Create list of data frames of interest
+comparisons = list(
+  "hP2X3" = read.csv("../results/DE/contrasts/contrast_Vulko_hP2X3_vs_Expi_hP2X3.csv"),
+  "GIPR" = read.csv("../results/DE/contrasts/contrast_Vulko_GIPR_vs_Expi_GIPR.csv"),
+  "GPR75" = read.csv("../results/DE/contrasts/contrast_Vulko_GPR75_vs_Expi_GPR75.csv"))
+
+columns = c("X", "Log2FC", "padj", "Comparison")
+comparison_heatmap = data.frame(matrix(nrow = 0, ncol = length(columns))) 
+colnames(comparison_heatmap) = columns
+ 
+i <- 1
+for (df in comparisons) {
+
+  df_name <- print(names(comparisons[i]))
+  df_plot <- df[df$X %in% retrieved$SYMBOL,]
+    
+  df <- df_plot %>%
+  arrange(log2FoldChange)  %>%                             # Decreasing order padj
+  dplyr::select(X, padj, log2FoldChange)  %>%              # Select columns to plot
+  mutate(Comparison = df_name)                             # Add column group name
+  
+  comparison_heatmap <- rbind(comparison_heatmap, df)
+
+  i <- i+1
+}
+
+
+# Get LFC
+df_LFC <- comparison_heatmap %>%
+  group_by(X) %>%
+  filter(any(padj < 0.01 & abs(log2FoldChange) > 0.5)) %>%
+  dplyr::select(X, log2FoldChange, Comparison)  # Keep X, log2FC and Comparison
+
+df_LFC <- pivot_wider(df_LFC, names_from = Comparison, values_from = log2FoldChange)
+m_LFC <- data.matrix(df_LFC)
+row.names(m_LFC) <- df_LFC$X
+m_LFC <- m_LFC[, -1]
+
+# Get padj
+df_padj <- comparison_heatmap %>%
+  group_by(X) %>%
+  filter(any(padj < 0.01 & abs(log2FoldChange) > 0.5)) %>%
+  dplyr::select(X, padj, Comparison)  # Keep X, log2FC and Comparison
+
+df_padj <- pivot_wider(df_padj, names_from = Comparison, values_from = padj)
+m_padj <- data.matrix(df_padj)
+row.names(m_padj) <- df_padj$X
+m_padj <- m_padj[, -1]
+
+sign_labels <- m_padj
+sign_labels[sign_labels <= 0.001] <- "***" 
+sign_labels[(sign_labels > 0.001) & (sign_labels <= 0.01)] <- "**"
+sign_labels[(sign_labels > 0.01) & (sign_labels <= 0.05)] <- "*"
+sign_labels[sign_labels > 0.05] <- ""
+
+# ---------------------------------------------------------------------
+# PLOTTING SCHEMING EVEN
+
+# NA omit
+na_rows <- complete.cases(m_LFC)
+m_LFC <- m_LFC[na_rows, ]
+sign_labels <- sign_labels[na_rows, ]
+
+rg <- max(abs(m_LFC), na.rm = TRUE) # Center 0 for legend
+color_palette <- colorRampPalette(c("#0246b3", "white", "#b30904"))(100) # color
+
+genes_heatmap <- pheatmap(m_LFC,
+                          main = ontology,
+                          na_col = "white",
+                          color = color_palette,
+                          cluster_rows=F, cluster_cols = F,
+                          border_color = "grey92",
+                          angle_col = 45,
+                          cex = 0.8,
+                          show_rownames = TRUE, 
+                          show_colnames = TRUE,
+                          fontsize_col = 11,
+                          fontsize_row = 7,
+                          display_numbers = sign_labels,
+                          width=8, height=10, cellwidth = 16, cellheight=5,
+                          breaks = seq(-rg, rg, length.out = 100))
+
+# ---------------------------------------------------------------------
+# Save plot
+pdf(file=paste0("../results/ontologies/autophagy_0006914_05_001", ".pdf"), width=3, height=10)
+genes_heatmap
+dev.off()
+```
+
