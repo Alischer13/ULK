@@ -79,6 +79,12 @@ R_scripts/R_scripts.Rproj
 R_scripts/renv.lock
 R_scripts/renv/
 
+affinity/
+data/fSec Data/
+figures/
+python_scripts/
+random/
+scripts/plot_FLDA.py
 
 
 
