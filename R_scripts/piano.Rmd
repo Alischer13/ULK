@@ -1,0 +1,203 @@
+---
+title: "piano"
+output: html_document
+date: "2024-11-12"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(piano)
+library(snowfall)
+library(pathview)
+```
+
+
+# Wilcoxon - csv files, filtered genes 0 across all (ZERO filter)
+
+# Piano BP
+```{r}
+# GO Biological process
+gmt_file <- "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2023.2.Hs/c5.go.bp.v2023.2.Hs.symbols.gmt" # BP
+save_path <- "../results/piano_nperm10000/piano_BP/"
+
+gmt_file <- loadGSC(gmt_file, type="gmt")
+
+#csv_files = list(
+#  "celltype" = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv"),
+#  "GPR75" = read.csv("../results/DE/contrasts/contrast_Vulko_GPR75_vs_Expi_GPR75.csv"),
+#  "GIPR" = read.csv("../results/DE/contrasts/contrast_Vulko_GIPR_vs_Expi_GIPR.csv"),
+#  "hP2X3" = read.csv("../results/DE/contrasts/contrast_Vulko_hP2X3_vs_Expi_hP2X3.csv")
+#)
+
+csv_files = list("celltype" = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv"))
+ 
+x <- 1
+for (csv in csv_files) {
+  
+  csv[csv==""] <- NA
+  csv <- na.omit(csv)
+  csv[,1] = toupper(csv[,1])
+  log2fc <- csv$log2FoldChange
+  pval <- csv$pvalue
+
+  # Run analysis
+  names(pval) <- names(log2fc) <- csv$X
+  gsaRes <- runGSA(pval, directions=log2fc, geneSetStat='wilcoxon', gsc=gmt_file, nPerm=10000, ncpus = 4)
+  
+  # Save gsaRes!
+  assign(paste0("wilcoxon_", names(csv_files[x])), gsaRes)
+  
+  # Save file
+  save_file <- paste("piano_BP_", names(csv_files[x]), sep="")
+  GSAsummaryTable(gsaRes, save=T, file=paste(save_path, save_file, ".csv", sep = ''))
+  
+  # Plot heatmap
+  pdf(file=paste(save_path, save_file, ".pdf", sep = ''), height=6, width=8)
+  GSAheatmap(gsaRes, cutoff = 5, colorkey = FALSE, ncharLabel=150, columnnames="abbr", cellnote="none", cex=0.1)
+  dev.off()
+  
+  x <- x + 1 
+}
+ 
+```
+
+# Piano CC
+```{r}
+# GO cellular components
+gmt_file <- "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2023.2.Hs/c5.go.cc.v2023.2.Hs.symbols.gmt" # CC
+save_path <- "../results/piano_nperm10000/piano_CC/"
+
+gmt_file <- loadGSC(gmt_file, type="gmt")
+
+#csv_files = list(
+#  "celltype" = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv"),
+#  "GPR75" = read.csv("../results/DE/contrasts/contrast_Vulko_GPR75_vs_Expi_GPR75.csv"),
+#  "GIPR" = read.csv("../results/DE/contrasts/contrast_Vulko_GIPR_vs_Expi_GIPR.csv"),
+#  "hP2X3" = read.csv("../results/DE/contrasts/contrast_Vulko_hP2X3_vs_Expi_hP2X3.csv")
+#)
+
+csv_files = list("celltype" = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv"))
+ 
+x <- 1
+for (csv in csv_files) {
+  
+  csv[csv==""] <- NA
+  csv <- na.omit(csv)
+  csv[,1] = toupper(csv[,1])
+  log2fc <- csv$log2FoldChange
+  pval <- csv$pvalue
+
+  # Run analysis
+  names(pval) <- names(log2fc) <- csv$X
+  gsaRes <- runGSA(pval, directions=log2fc, geneSetStat='wilcoxon', gsc=gmt_file, nPerm=10000, ncpus = 4)
+  
+  # Save gsaRes!
+  assign(paste0("wilcoxon_", names(csv_files[x])), gsaRes)
+  
+  # Save file
+  save_file <- paste("piano_CC_", names(csv_files[x]), sep="")
+  GSAsummaryTable(gsaRes, save=T, file=paste(save_path, save_file, ".csv", sep = ''))
+  
+  # Plot heatmap
+  pdf(file=paste(save_path, save_file, ".pdf", sep = ''), height=6, width=8)
+  GSAheatmap(gsaRes, cutoff = 5, colorkey = FALSE, ncharLabel=150, columnnames="abbr", cellnote="none", cex=0.1)
+  dev.off()
+  
+  x <- x + 1 
+}
+ 
+```
+
+
+# KEGG
+```{r}
+# KEGG
+gmt_file <- "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2023.2.Hs/c2.cp.kegg_legacy.v2023.2.Hs.symbols.gmt" # KEGG
+save_path <- "../results/piano_nperm10000/piano_KEGG/"
+
+gmt_file <- loadGSC(gmt_file, type="gmt")
+
+#csv_files = list(
+#  "celltype" = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv"),
+#  "GPR75" = read.csv("../results/DE/contrasts/contrast_Vulko_GPR75_vs_Expi_GPR75.csv"),
+#  "GIPR" = read.csv("../results/DE/contrasts/contrast_Vulko_GIPR_vs_Expi_GIPR.csv"),
+#  "hP2X3" = read.csv("../results/DE/contrasts/contrast_Vulko_hP2X3_vs_Expi_hP2X3.csv")
+#)
+
+csv_files = list("celltype" = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv"))
+ 
+x <- 1
+for (csv in csv_files) {
+  
+  csv[csv==""] <- NA
+  csv <- na.omit(csv)
+  csv[,1] = toupper(csv[,1])
+  log2fc <- csv$log2FoldChange
+  pval <- csv$pvalue
+
+  # Run analysis
+  names(pval) <- names(log2fc) <- csv$X
+  gsaRes <- runGSA(pval, directions=log2fc, geneSetStat='wilcoxon', gsc=gmt_file, nPerm=10000, ncpus = 4)
+  
+  # Save gsaRes!
+  assign(paste0("wilcoxon_", names(csv_files[x])), gsaRes)
+  
+  # Save file
+  save_file <- paste("piano_KEGG_", names(csv_files[x]), sep="")
+  GSAsummaryTable(gsaRes, save=T, file=paste(save_path, save_file, ".csv", sep = ''))
+  
+  # Plot heatmap
+  pdf(file=paste(save_path, save_file, ".pdf", sep = ''), height=6, width=8)
+  GSAheatmap(gsaRes, cutoff = 5, colorkey = FALSE, ncharLabel=150, columnnames="abbr", cellnote="none", cex=0.1)
+  dev.off()
+  
+  x <- x + 1 
+}
+ 
+```
+
+
+######################################################################################################
+
+# View piano results
+```{r}
+
+#df = read.csv("../results/piano_nperm1000/piano_BP/piano_BP_.csv", sep="\t")
+#df = read.csv("../results/piano_nperm1000/piano_BP/piano_BP_GIPR.csv", sep="\t")
+#df = read.csv("../results/piano_nperm1000/piano_BP/piano_BP_GPR75.csv", sep="\t")
+#df = read.csv("../results/piano_nperm1000/piano_BP/piano_BP_hP2X3.csv", sep="\t")
+
+df = read.csv("../results/piano_nperm1000/piano_CC/piano_CC_.csv", sep="\t")
+#df = read.csv("../results/piano_nperm1000/piano_CC/piano_CC_GIPR.csv", sep="\t")
+#df = read.csv("../results/piano_nperm1000/piano_CC/piano_CC_GPR75.csv", sep="\t")
+#df = read.csv("../results/piano_nperm1000/piano_CC/piano_CC_hP2X3.csv", sep="\t")
+
+#df = read.csv("../results/piano_nperm1000/piano_KEGG/piano_KEGG_.csv", sep="\t")
+#df = read.csv("../results/piano_nperm1000/piano_KEGG/piano_KEGG_GIPR.csv", sep="\t")
+#df = read.csv("../results/piano_nperm1000/piano_KEGG/piano_KEGG_GPR75.csv", sep="\t")
+#df = read.csv("../results/piano_nperm1000/piano_KEGG/piano_KEGG_hP2X3.csv", sep="\t")
+
+
+df <- df %>% dplyr::select(BP = Name,
+                         genes = Genes..tot.,
+                         padj_dn = p.adj..dist.dir.dn.,
+                         padj_mix_dn = p.adj..mix.dir.dn.,
+                         padj_nondir = p.adj..non.dir..,
+                         padj_mix_up = p.adj..mix.dir.up.,
+                         padj_up = p.adj..dist.dir.up.,)
+
+
+df <- df %>% dplyr::filter(padj_dn < 0.1 | padj_mix_dn < 0.1 | padj_nondir < 0.1 | padj_mix_up < 0.1 | padj_up < 0.1)
+View(df)
+
+```
+
+```{r}
+df = read.csv("../results/revigo/CC/CC_celltype/reducedCC_celltype_dn.csv", sep=",")
+View(df)
+```
+
+
