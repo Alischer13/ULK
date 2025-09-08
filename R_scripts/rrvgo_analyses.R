@@ -8,30 +8,69 @@ library(piano)
 library(snowfall)
 library(clusterProfiler)
 library(ggdendro)
-
+library(org.Hs.eg.db)
+library(tidyr)
+library(pheatmap)
 
 ################################################################################################
 # Set inputs
 ################################################################################################
 
-# CC output - uncomment following 6 lines:
+###################### For TM protein data
+
+# CC output - uncomment following 8 lines:
 #set_ontology = "CC"
-#groups <-  list("CC_celltype" = read.csv("../results/piano_nperm10000/piano_CC/piano_CC_celltype.csv", sep="\t")) # CC piano result
-#json_file <- "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2023.2.Hs/c5.go.cc.v2023.2.Hs.json" # Corresponding json file - CC
+#groups <-  list("CC_celltype" = read.csv("../results/piano/piano_CC/piano_CC_celltype.csv", sep="\t")) # CC piano result
+#DEGs_df <- read.csv("../results/DE/contrasts/DEGs_Vulko_vs_Expi.csv")
 #group_of_interest = "CC_celltype" # CC rrvgo output
-#path_name = "../results/rrvgo_output/CC_celltype/" # CC rrvgo output
+#path_name = "../results/rrvgo/CC_celltype_top50/" # CC rrvgo output
+#save_file <- "TM_CC_heatmap.pdf"
+#json_file <- "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2023.2.Hs/c5.go.cc.v2023.2.Hs.json" # Corresponding json file - CC
 #GO_XX <- "GOCC_"
 
-# BP output - uncomment following 6 lines:
-set_ontology = "BP"
-groups <-  list("BP_celltype" = read.csv("../results/piano_nperm10000/piano_BP/piano_BP_celltype.csv", sep="\t")) # BP piano results
-json_file <- "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2023.2.Hs/c5.go.bp.v2023.2.Hs.json" # Corresponding json file - BP
-group_of_interest = "BP_celltype" # BP rrvgo output
-path_name = "../results/rrvgo_output/BP_celltype/" # BP rrvgo output
-GO_XX <- "GOBP_"
+# BP output - uncomment following 8 lines:
+#set_ontology = "BP"
+#groups <-  list("BP_celltype" = read.csv("../results/piano/piano_BP/piano_BP_celltype.csv", sep="\t")) # BP piano results
+#DEGs_df <- read.csv("../results/DE/contrasts/DEGs_Vulko_vs_Expi.csv")
+#group_of_interest = "BP_celltype" # BP rrvgo output
+#path_name = "../results/rrvgo/BP_celltype_top50/" # BP rrvgo output
+#save_file <- "TM_BP_heatmap.pdf"
+#json_file <- "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2023.2.Hs/c5.go.bp.v2023.2.Hs.json" # Corresponding json file - BP
+#GO_XX <- "GOBP_"
 
-# Corresponding DEG file
-DEGs_df <- read.csv("../results/DE/contrasts/DEGs_Vulko_vs_Expi.csv")
+
+###################### For CriptoFC data 
+
+# Negavtive vs Negative (vulko vs expi) CC
+#set_ontology = "CC"
+#groups <-  list("CC_celltype" = read.csv("../CriptoFc/results/piano/piano_CC/piano_CC_Negative.csv", sep="\t")) # CC piano results
+#DEGs_df <- read.csv("../CriptoFc/results/DE/contrasts/DEGs_Vulko293_neg_vs_Expi293_neg.csv")
+#group_of_interest = "CC_celltype" # CC rrvgo output
+#path_name = "../CriptoFc/results/rrvgo/CC_Negative_top50/"
+#save_file <- "rrvgo_CC_Negative.pdf"
+#json_file <- "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2023.2.Hs/c5.go.cc.v2023.2.Hs.json" # Corresponding json file - CC
+#GO_XX <- "GOCC_"
+
+# Negavtive vs Negative (vulko vs expi) BP
+#set_ontology = "BP"
+#groups <-  list("BP_celltype" = read.csv("../CriptoFc/results/piano/piano_BP/piano_BP_Negative.csv", sep="\t")) # BP piano results
+#DEGs_df <- read.csv("../CriptoFc/results/DE/contrasts/DEGs_Vulko293_neg_vs_Expi293_neg.csv")
+#group_of_interest = "BP_celltype" # BP rrvgo output
+#path_name = "../CriptoFc/results/rrvgo/BP_Negative_top50/"
+#save_file <- "rrvgo_BP_Negative.pdf"
+#json_file <- "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2023.2.Hs/c5.go.bp.v2023.2.Hs.json" # Corresponding json file - BP
+#GO_XX <- "GOBP_"
+
+
+# CriptoFC vs CriptoFC (vulko vs expi) BP
+set_ontology = "BP"
+groups <-  list("BP_celltype" = read.csv("../CriptoFc/results/piano/piano_BP/piano_BP_CriptoFC.csv", sep="\t")) # BP piano results
+DEGs_df <- read.csv("../CriptoFc/results/DE/contrasts/DEGs_Vulko293_CriptoFC_vs_Expi293_CriptoFC.csv")
+group_of_interest = "BP_celltype" # BP rrvgo output
+path_name = "../CriptoFc/results/rrvgo/BP_CriptoFC_top50/"
+save_file <- "rrvgo_BP_CriptoFC.pdf"
+json_file <- "https://data.broadinstitute.org/gsea-msigdb/msigdb/release/2023.2.Hs/c5.go.bp.v2023.2.Hs.json" # Corresponding json file - BP
+GO_XX <- "GOBP_"
 
 
 ################################################################################################
@@ -163,7 +202,7 @@ get_go_genes <- function(go_term, DEGs_df) {
 }
 
 
-# B.2 Get DEGs for specific comparison
+# B.2 Get DEGs for specific comparison (ex for DEGs_Vulko_vs_Expi.csv)
 ################################################################################################
 
 # Select comparison
@@ -197,9 +236,9 @@ GO_DEGs_df <- left_join(GO_df, GO_DEGs_df, by = c("exactSource" = "go_term"))
 ################################################################################################################################################################
 
 
-# 1. Select top 100 GOs
+# 1. Select top 50 GOs
 # Select GOs > 5 genes in direction of interest
-# Arrange after padj and # genes in set
+# Arrange after lowest padj and largest average log2FC of genes in each set
 
 # 2. Run ReviGO
 # Generate similarity matrix -> Resnik
@@ -221,7 +260,7 @@ revigo_cluster_terms <- function(df_in, group_of_interest, GO_DEGs_df, dir, path
     filter(Comparison == group_of_interest & Genes..tot. > 5 & Direction == dir) %>%
     arrange(padj, desc(avg_log2_FC)) %>%
     dplyr::select(exactSource, padj, Genes..tot., avg_log2_FC, sum_log2FC, gene_list, Direction) %>%
-    head(100)
+    head(50)
   
   # 2. REVIGO
   simMatrix <- calculateSimMatrix(revigo_df$exactSource,orgdb="org.Hs.eg.db",ont=set_ontology,method="Resnik")
@@ -281,20 +320,25 @@ make_dendogram <- function(df_in, df_rep_GOs, GO_DEGs_df, simMatrix, group_of_in
   
   dendogram_plot <- ggplot() + 
     geom_segment(data=segment(dendr), aes(x=x, y=y, xend=xend, yend=yend)) + 
-    geom_text(data=label(dendr), aes(x, y, label=Name, hjust=0, color=term), size=2, key_glyph="point") +
+    geom_text(data=label(dendr), aes(x, y, label=Name, hjust=0, color=term), size=3, key_glyph="point") +
     labs(color = "  Representative GO") +
     guides(shape = guide_legend(override.aes = list(size = 1))) +
     guides(color = guide_legend(override.aes = list(size = 1))) +
     theme(legend.title = element_text(size = 10),
-          legend.text = element_text(size = 8),
+          legend.text = element_text(size = 10),
           legend.spacing.x = unit(1, 'mm')) +
-    coord_flip() + scale_y_reverse(expand=c(0.8, 0)) + 
+    coord_flip() +
+    scale_y_reverse(expand=c(0.8, 0)) + 
     geom_hline(yintercept = threshold_value, color = "red", linetype = "dashed") +
     theme(axis.line.y=element_blank(), axis.ticks.y=element_blank(), axis.text.y=element_blank(),axis.title.y=element_blank(),
           axis.title.x=element_blank(),
           panel.background=element_rect(fill="white"),
           panel.grid=element_blank(),
-          theme(aspect.ratio=1/12))
+          aspect.ratio=1,
+          plot.margin = margin(5, 0, 5, 0))
+    
+  #plot.margin = margin(5, 0, 5, 0)) +
+  #scale_x_continuous(expand = expansion(mult = c(0, 0)))
   
   pdf(file=paste0(path_name, "dendo_", group_of_interest, "_", dir, ".pdf"), width = 15, height = 10)
   print(dendogram_plot)
@@ -335,7 +379,7 @@ df_plot <- merge(df_info, df_revigo_clustered, by.x = "exactSource", by.y = "go"
   dplyr::select(exactSource, Name, parentTerm, revigo_source, up, mix_up, mix_nondir, mix_dn, dn)
 
 # Reformat GO Name term
-df_plot$Name <- df_plot$Name %>% gsub("GOBP_", "", .) %>% gsub("_", " ", .) %>%  tolower() # REFORMAT GO stuff
+df_plot$Name <- df_plot$Name %>% gsub(GO_XX, "", .) %>% gsub("_", " ", .) %>%  tolower() # REFORMAT GO stuff (remove leading GO_XX) 
 
 # Add number of GOs in each cluster info
 df_plot <- merge(df_plot, df_revigo_clustered, by.x = c("exactSource", "revigo_source"), by.y = c("go", "revigo_source")) %>%
@@ -380,9 +424,10 @@ row.names(plot_matrix) <- df_plot$Name
 plot_matrix <- t(plot_matrix)
 
 d <- plot_matrix
-d[d < 0.01] <- as.character('**')
-d[d >= 0.01 & d <= 0.05] <- as.character('*')
+d[d <= 0.01] <- as.character('**')
+d[d > 0.01 & d <= 0.05] <- as.character('*')
 d[d > 0.05] <- as.character(' ')
+
 
 # Plot
 plot_matrix_log <- apply(plot_matrix, 1:2, function(x) ifelse(is.na(x), NA, -log10(x)))
@@ -396,6 +441,16 @@ ann_colors = list(Groups = c(dn="#6E7CB9FF", mix_dn="#7BBCD5FF", mix_nondir="#F8
 
 #row.names(annot_groups) <- colnames(plot_matrix_log)
 
+clusterTerms <- t(as.data.frame(plot_matrix_log))
+clusterTerms <- data.frame(
+  heatmap_nr = seq_len(nrow(clusterTerms)),
+  term_name = row.names(clusterTerms))
+
+#clusterTerms$heatmap_nr <- seq_len(nrow(clusterTerms))
+
+write.csv(clusterTerms, file = paste0(path_name, "clusterTerms", group_of_interest, ".csv"), row.names = FALSE)
+
+
 genes_heatmap <- pheatmap(plot_matrix_log,
                           display_numbers=d, # padj matrix (not logged)
                           number_color="black", # color of text in matrix
@@ -406,10 +461,11 @@ genes_heatmap <- pheatmap(plot_matrix_log,
                           annotation_col = annot_groups,
                           annotation_colors = ann_colors,
                           border_color = "grey92",
-                          angle_col = 45,
                           cex = 1,
                           #legend = TRUE,   # Show the legend
-                          labels_col = as.character(colnames(plot_matrix_log)),
+                          #labels_col = as.character(colnames(plot_matrix_log)),
+                          angle_col = 90,
+                          labels_col = 1:ncol(plot_matrix_log),
                           legend_width = 0.2,  # Adjust legend width (default is 0.15)
                           fontsize = 8,
                           fontsize_col = 6,
@@ -417,7 +473,7 @@ genes_heatmap <- pheatmap(plot_matrix_log,
                           cellwidth = 8, cellheight = 14)
 #cellwidth = 8, cellheight = 14)
 
-pdf(file=paste0(path_name,"heatmap.pdf"), width = 16, height=5)
+pdf(file=paste0(path_name,save_file), width = 16, height=5)
 genes_heatmap
 dev.off()
 

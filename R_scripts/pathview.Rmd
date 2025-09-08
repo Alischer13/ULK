@@ -13,59 +13,70 @@ knitr::opts_chunk$set(echo = TRUE)
 library(pathview)
 ```
 
-Run initial pathview on autophagy -> save values & identify abs(max) value to set new color label range
+
+
+Run pathview twice, first to find max to get abs(max) value to set new color label range
 ```{r}
-# Read in Vulko vs Expi data
-df = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv")
-df <- df %>% filter(padj<0.05)
+# Options:
 
-# Prepare data for pathview
-log2FC <-df$log2FoldChange
-names(log2FC) <- df$X
+path_ids <- c("04140") # Autophagy
 
-# Run pathview
-pv.out <- pathview(
-  gene.data = log2FC, 
-  pathway.id = '04140', 
-  species = "hsa", 
-  gene.idtype = "symbol"
-)
-
-# Save genes included in pathway & values
-write.csv(pv.out$plot.data.gene, "../results/pathview/pathview.csv")
-```
-Function to round up to closest 1 digit (ex 3.04 -> 3.1) to ensure whole range is within color label
-```{r}
-round_up <- function(x) {
-  scale <- 10^1
-  ceiling(x * scale) / scale
+for (path_id in path_ids){
+  #df = read.csv("../CriptoFc/results/DE/contrasts/contrast_Vulko293_neg_vs_Expi293_neg.csv")
+  #df = read.csv("../CriptoFc/results/DE/contrasts/contrast_Vulko293_CriptoFC_vs_Expi293_CriptoFC.csv")
+  df = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv")
+  
+  df <- df %>% filter(padj<0.05)
+  
+  ####################################################################################
+  
+  # Prepare data for pathview
+  log2FC <-df$log2FoldChange
+  names(log2FC) <- df$X
+  
+  # Run pathview 1st to get max value to set color legend...
+  pv.out <- pathview(
+    gene.data = log2FC, 
+    pathway.id = path_id, 
+    species = "hsa", 
+    gene.idtype = "symbol"
+  )
+  
+  ####################################################################################
+  # Function to round up to closest 1 digit (ex 3.04 -> 3.1) to ensure whole range is within color label
+  round_up <- function(x) {
+    scale <- 10^1
+    ceiling(x * scale) / scale
+  }
+  
+  # Extract gene log2FC
+  log2FC <- pv.out$plot.data.gene
+  
+  # Find abs(max) gene value and round up to nearest 1 digit
+  max_val <- round_up(max(abs(log2FC$mol.data), na.rm = TRUE))
+  print(max_val)
+  
+  ####################################################################################
+  
+  # Rerun pathview with updated limit range
+  
+  log2FC <-df$log2FoldChange
+  names(log2FC) <- df$X
+  
+  # Run pathview
+  pv.out <- pathview(
+    gene.data = log2FC, 
+    pathway.id = path_id, 
+    species = "hsa", 
+    gene.idtype = "symbol",
+    limit = max_val,
+    low=list(gene="#0082FF"),
+    high=list(gene="#FF402C")
+  )
+  
+  # Save genes included in pathway & values
+  write.csv(pv.out$plot.data.gene, paste0("hsa",path_id,"_pathview.csv"))
 }
 
-# Extract gene log2FC
-log2FC <- pv.out$plot.data.gene
-
-# Find abs(max) gene value and round up to nearest 1 digit
-max_val <- round_up(max(abs(log2FC$mol.data), na.rm = TRUE))
-
-max_val
 ```
 
-Rerun pathview with updated limit range
-```{r}
-# Read in Vulko vs Expi data
-df = read.csv("../results/DE/contrasts/contrast_Vulko_vs_Expi.csv")
-df <- df %>% filter(padj<0.05)
-
-# Prepare data for pathview
-log2FC <-df$log2FoldChange
-names(log2FC) <- df$X
-
-# Run pathview
-pv.out <- pathview(
-  gene.data = log2FC, 
-  pathway.id = '04140', 
-  species = "hsa", 
-  gene.idtype = "symbol",
-  limit = max_val
-)
-```
