@@ -1,0 +1,195 @@
+---
+title: "Untitled"
+output: html_document
+date: "2025-06-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(scales)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+```
+
+Read in data
+```{r}
+metadata <- read.table("../CriptoFc/data/meta/DE_AZ_samples.txt", header = TRUE)
+estfact <- read.csv("../CriptoFc/results/DE/estFactors_normalized_counts.csv")
+
+# Select data to plot
+data <- estfact[estfact$X %in% c("CriptoFC", "ULK1", "ULK1transient"),]
+genes <- c("CriptoFC", "ULK1", "ULK1transient")
+
+# Data for genes of interest
+data <- estfact[estfact$X %in% genes,]
+```
+
+
+
+# Barplots individual genes across groups
+```{r}
+for (gene in genes){
+  
+  data_long <- data %>%
+  pivot_longer(cols = -X, names_to = "sample", values_to = "expression") %>%
+  left_join(metadata, by = "sample") %>%
+  filter(X == gene)
+  
+  summary_stats <- data_long %>%
+    group_by(X, short_name) %>%
+    summarize(
+      mean_expression = mean(expression),
+      sd_expression = sd(expression),
+      .groups = "drop"
+    )
+  
+  vst_plot <- ggplot(summary_stats, aes(x = short_name, y = mean_expression)) +
+    geom_bar(stat = "identity", position = position_dodge(width = 0.8), width = 0.7, fill = "steelblue") +
+    geom_errorbar(aes(ymin = mean_expression - sd_expression, ymax = mean_expression + sd_expression),
+                  position = position_dodge(width = 0.8), width = 0.25) +
+    labs(x = "", y = "Counts (median of ratios norm)", title=gene) +
+    #scale_fill_manual(values = c("Expi" = "#9bd1ae", "Vulko" = "#98b5eb")) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+      plot.title = element_text(size = 13, hjust = 0.5), 
+      axis.text.y = element_text(size = 13),
+      axis.title.x = element_text(size = 14),
+      axis.title.y = element_text(size = 14),
+      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 8)
+      )
+  
+  
+  pdf(paste0("../CriptoFc/results/barplots/", gene, ".pdf"), width = 5, height = 6)  # 6x6 inches
+  print(vst_plot)
+  dev.off()
+    
+}
+
+```
+
+# Display y legend with 10^instead of e
+```{r}
+scientific_10 <- function(x) {
+  parse(text=gsub("e","%*%10^", scales::scientific_format()(x)))
+}
+
+```
+
+
+
+Figure 2B
+- Plot CriptoFc cytometry and transcript levels
+- Cytometry data from figure2A.Rmd
+```{r}
+# Read in cytometry data from 
+cytometry <- read.table("../CriptoFc/data/other/mean_CriptoFc_cytometry.csv", header = TRUE, sep=",")
+
+
+data_long <- data %>%
+  pivot_longer(cols = -X, names_to = "sample", values_to = "expression") %>%
+  left_join(metadata, by = "sample") %>%
+  filter(X == "CriptoFC")
+
+summary_stats <- data_long %>%
+  group_by(X, short_name) %>%
+  summarize(
+    mean_expression = mean(expression),
+    .groups = "drop"
+  )
+
+# Merge to plot
+df_merged <- cytometry %>%
+  inner_join(summary_stats, by = "short_name") %>%
+  dplyr::select(short_name, mean_expression, CriptoFc_cytometry)
+
+# Linear model
+model <- lm(mean_expression ~ CriptoFc_cytometry, data = df_merged)
+r2 <- summary(model)$r.squared
+
+cytometry_plot <- ggplot(df_merged, aes(x = CriptoFc_cytometry, y = mean_expression)) +
+  geom_point(color = "steelblue", size = 3) +
+  geom_smooth(method = "lm", se = FALSE, color = "black",linetype = 3, size=0.7) +
+  geom_text(aes(label = short_name), hjust = 0.3, vjust = -0.8, size = 4) +
+  #ylim(4000000, 12000000) +
+  xlim(0, 700000) +
+  scale_y_continuous(label=scientific_10) +
+  labs(x = "Median Cripto-Fc(RL1-H) of Live cells", y = "Cripto-Fc (median of ratios)", title=paste0("Cytometry and transcripts R² = ", round(r2, 4))) +
+  theme_minimal() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1)) +
+  theme(
+    plot.title = element_text(size = 15, hjust = 0.5), 
+    axis.text.x = element_text(size = 15), 
+    axis.text.y = element_text(size = 15),
+    axis.title.x = element_text(size = 17),
+    axis.title.y = element_text(size = 17),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 15)
+    )
+
+pdf("../CriptoFc/results/barplots/CriptoFc_cytometry.pdf", width = 6, height = 6)  # 6x6 inches
+print(cytometry_plot)
+dev.off()
+
+```
+
+
+Figure 2C
+Plot scatterplot CriptoFc vs ULK1 transcript levels
+```{r}
+data_long <- data %>%
+  pivot_longer(cols = -X, names_to = "sample", values_to = "expression") %>%
+  left_join(metadata, by = "sample")
+
+summary_stats <- data_long %>%
+  group_by(X, short_name) %>%
+  summarize(
+    mean_expression = mean(expression),
+    sd_expression = sd(expression),
+    .groups = "drop"
+  )
+
+summary_stats_wide <- summary_stats %>%
+  dplyr::select(-sd_expression) %>%
+  dplyr::filter(!(short_name %in% c("Expi293_CriptoFC_ULK1",
+                                    "Vulko293_CriptoFC_ULK1",
+                                    "Expi293_neg",
+                                    "Vulko293_neg"))) %>%
+  pivot_wider(names_from = "X", values_from = "mean_expression"
+)
+
+
+# Linear model
+model <- lm(CriptoFC ~ ULK1, data = summary_stats_wide)
+r2 <- summary(model)$r.squared
+
+expression_plot <- ggplot(summary_stats_wide, aes(x = ULK1, y = CriptoFC)) +
+  geom_point(color = "steelblue", size = 3) +
+  geom_smooth(method = "lm", se = FALSE, color = "black",linetype = 3, size=0.7) +
+  geom_text(aes(label = short_name), hjust = -0.1, vjust = 0.5, size = 4) +
+  ylim(4000000, 12000000) +
+  xlim(100, 500) +
+  scale_y_continuous(label=scientific_10) +
+  labs(x = "ULK1", y = "Cripto-Fc", title=paste0("Counts (median of ratios norm), R² = ", round(r2, 4))) +
+  theme_minimal() +
+  theme(panel.border = element_rect(color = "black", fill = NA, size = 1)) +
+  theme(
+    plot.title = element_text(size = 15, hjust = 0.5), 
+    axis.text.x = element_text(size = 15), 
+    axis.text.y = element_text(size = 15),
+    axis.title.x = element_text(size = 17),
+    axis.title.y = element_text(size = 17),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 15)
+    )
+
+pdf("../CriptoFc/results/barplots/CriptoFc_ULK1.pdf", width = 6, height = 6)  # 6x6 inches
+print(expression_plot)
+dev.off()
+
+```

@@ -1,0 +1,291 @@
+---
+title: "deseq2_analyses_CriptoFc"
+output: html_document
+date: "2025-06-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load libraries
+```{r}
+library(dbplyr)
+library(dplyr)
+library(tximport)
+library(biomaRt)
+library(DESeq2)
+library(ggplot2)
+library(EnhancedVolcano)
+```
+
+----------------------------------------------------------------------
+1. Read in metadata
+----------------------------------------------------------------------
+```{r}
+metadata <- read.table("../CriptoFc/data/meta/DE_AZ_samples.txt", header = TRUE)
+rownames(metadata) <- metadata$sample
+metadata
+```
+
+
+2. Locate tsv files & read in abundancies & convert to gene counts
+- Info: tximport tsv kallisto [https://bioconductor.org/packages/release/bioc/vignettes/tximport/inst/doc/tximport.html#kallisto)]
+- tx2gene.GRCh38.cdna.csv generated with make_tx2gene_from_reference.sh
+----------------------------------------------------------------------
+```{r}
+# Locate abundance files
+kallisto_path <- "../CriptoFc/data/kallisto_output/"
+files <- paste(kallisto_path, list.files(path=kallisto_path, pattern="abundance.tsv", recursive = TRUE), sep = "/")
+names(files) <- metadata$sample
+
+# Assign transcripts to genes
+tx2gene <- read.csv("../CriptoFc/reference/tx2gene.GRCh38_release103.cdna.csv", header=TRUE)
+
+# Add names of addon transcripts used in kallisto reference
+addons <- list('CriptoFC','ULK1transient')
+addons_df <- data.frame(unlist(addons), unlist(addons))
+names(addons_df) = c("TXNAME","GENEID")
+
+tx2gene = rbind(tx2gene, addons_df)
+
+# Convert to gene counts using tx2gene table
+txi.kallisto.tsv <- tximport(files, countsFromAbundance='no', type = "kallisto", tx2gene = tx2gene, ignoreAfterBar = TRUE)
+head(txi.kallisto.tsv$counts)
+dim(txi.kallisto.tsv$counts)
+
+write.csv(txi.kallisto.tsv, "../CriptoFc/results/DE/txi.kallisto_UNFILTERED.csv")
+```
+
+
+----------------------------------------------------------------------
+3. Filter low abundancies
+- Filter transcripts with TPM 0 accross all samples
+- Filter count matrix (`txi.kallisto.tsv$counts`) using TPM info (`txi.kallisto.tsv$abundance`)
+----------------------------------------------------------------------
+
+```{r}
+# Exclude transcripts from count matrix (txi.kallisto.tsv$counts), with TPM 0 accross all samples (TPMs in txi.kallisto.tsv$abundance)
+tpms_filtered <- txi.kallisto.tsv$abundance[rowSums(txi.kallisto.tsv$abundance[,0:ncol(txi.kallisto.tsv$abundance)]>0)>0, ]
+count_matrix <- as.data.frame(txi.kallisto.tsv$counts[rownames(tpms_filtered),])
+
+# Extract round count matrix Kallisto takes discrete values & remove gene version numbers
+count_matrix <- round(count_matrix)
+rownames(count_matrix) <- gsub("\\.\\d+$", "", as.character(rownames(count_matrix)))
+
+# Number genes filtered out (counts stored in txi.kallisto.tsv$counts)
+dim(txi.kallisto.tsv$counts)
+dim(count_matrix)
+
+# Print log2(count + 1) transformed counts (log2(n+1) used to visualize counts)
+pdf(file="../CriptoFc/results/DE/boxplot_raw_counts.pdf", width = 10, height = 4)
+boxplot(log2(as.matrix(txi.kallisto.tsv$counts)+1),ylab=expression('Log'[2]~'Read counts'),las=2,main="Unfiltered data (log2(count + 1))", cex.axis=0.8)
+dev.off()
+
+pdf(file="../CriptoFc/results/DE/boxplot_filtered_counts.pdf", width = 10, height = 4)
+boxplot(log2(as.matrix(count_matrix)+1),ylab=expression('Log'[2]~'Read counts'),las=2,main="Filtered data (log2(count + 1))", cex.axis=0.8)
+dev.off()
+```
+
+
+----------------------------------------------------------------------
+4. Convert gene IDs into gene symbols
+----------------------------------------------------------------------
+
+4.1 Get ensembl df, take gene id and gene symbols
+- Use https://feb2021.archive.ensembl.org/index.html - release 103 (same as Kallisto ref & to make tx2gene)
+```{r}
+# Get ensembl df, take gene id and gene symbols
+ensembl = useMart("ensembl", host="https://feb2021.archive.ensembl.org", dataset="hsapiens_gene_ensembl")
+```
+
+
+4.2 For count matrix
+```{r}
+CM <- as.matrix(count_matrix)
+dim(CM)
+
+# Retrieve Ensembl gene IDs and gene names
+ensembl_df <- biomaRt::getBM(attributes=c("ensembl_gene_id", "external_gene_name"), values=rownames(CM), mart=ensembl)
+
+# Append addons to ensembl df
+addons <- list('CriptoFC','ULK1transient')
+addons_df <- data.frame(unlist(addons), unlist(addons))
+names(addons_df) = c("ensembl_gene_id","external_gene_name")
+ensembl_df = rbind(ensembl_df, addons_df)
+
+# Keep symbols present in count matrix & add gene symbols to CM
+my_genes_ann = ensembl_df[match(rownames(CM), ensembl_df$ensembl_gene_id),]
+rownames(CM) <- my_genes_ann$external_gene_name
+
+# Remove NA & "" rows
+CM <-  CM[!is.na(rownames(CM)) & rownames(CM) != "", ]
+group <- rownames(CM)
+CM <- rowsum(CM, group) # Sum rows with same gene symbols
+
+write.csv(CM, "../CriptoFc/results/DE/count_matrix.csv", row.names = TRUE)
+dim(CM)
+```
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+5. DESEQ2 -Differential gene expression analysis
+-----------------------------------------------------------------------------------------------------------------------------------
+
+5.1 Ensure rownames in metadata (samples) == colnames of count_matrix 
+- Convert to factor first
+```{r}
+colnames <- names(metadata)
+metadata[,colnames] <- lapply(metadata[,colnames], factor)
+
+all(rownames(metadata) == colnames(CM))
+is.matrix(CM)
+```
+
+5.2 Run deseq2, design formula: ~short_name
+```{r}
+# Create DESeqDataSet object
+dds_object <- DESeqDataSetFromMatrix(CM, metadata, ~ short_name) 
+
+# Run deseq2
+dds <- DESeq(dds_object)
+```
+
+5.3 Save normalized and transformed counts
+- vst transformad counts (blind = FALSE) -> when plotting PCA (https://lashlock.github.io/compbio/R_presentation.html & https://support.bioconductor.org/p/9148734/)
+- estimateSizeFactors normalized counts (https://hbctraining.github.io/DGE_workshop/lessons/02_DGE_count_normalization.html)
+```{r}
+# Extract the vst transformad counts blind=TRUE
+vsd_blind <- vst(dds_object, blind = TRUE)
+vsd <- vst(dds_object, blind = FALSE)
+
+# Save vst files (transformed for visualization, not used by deseq2)
+write.csv(assay(vsd_blind), "../CriptoFc/results/DE/vst_blind_true.csv")
+write.csv(assay(vsd), "../CriptoFc/results/DE/vst_blind_false.csv")
+
+# Get and save estimateSizeFactors normalized counts 
+estFactors <- estimateSizeFactors(dds_object)
+normalized_counts <- counts(estFactors, normalized=TRUE)
+write.csv(normalized_counts, file="../CriptoFc/results/DE/estFactors_normalized_counts.csv")
+
+```
+dds <- estimateSizeFactors(dds)
+ncts <- counts(dds, normalized=TRUE)
+
+------------------------------------------------------------------------------------------------------------------------------------
+6. Some dendrogram & PCA plotting
+------------------------------------------------------------------------------------------------------------------------------------
+
+6.1 Plot vsd transformed counts in cluster dendrogram 
+```{r}
+vsd_tree <- assay(vsd) %>% t()
+htree <- hclust(dist(vsd_tree), method = "average")
+
+pdf(file="../CriptoFc/results/DE/htree.pdf", width = 10, height = 5)
+plot(htree)
+dev.off()
+```
+
+6.2 PCA - of vsd transformed counts
+```{r}
+pdf(file="../CriptoFc/results/DE/PCA_custom.pdf", width = 6, height = 6)
+
+pcaData <- plotPCA(vsd, intgroup = c("cell_type", "case"), ntop = 500, returnData = TRUE)
+
+pcaData$cell_type <- as.factor(pcaData$cell_type)
+pcaData$case <- as.factor(pcaData$case)
+
+ggplot(pcaData, aes(x = PC1, y = PC2, color = cell_type, shape = case)) +
+  geom_point(size = 5,stroke = 0.6) +
+  theme_bw() +
+  labs(
+    x = paste0("PC1: ", round(attr(pcaData, "percentVar")[1] * 100, 1), "% variance"),
+    y = paste0("PC2: ", round(attr(pcaData, "percentVar")[2] * 100, 1), "% variance"),
+    color = "Cell type",
+    shape = "Transiently exp."
+  ) +
+  scale_shape_manual(values = c(21, 22, 23, 4)) +
+  theme(axis.title.x = element_text(size = 14),
+        axis.title.y = element_text(size = 14),
+        legend.title = element_text(size = 8),
+        aspect.ratio = 1)
+
+dev.off()
+```
+
+
+------------------------------------------------------------------------------------------------------------------------------------
+7. Exract contrasts
+- Volcano plots of contrasts, save DE .csv, upset plotsa of overlaps
+- Save pairwise contrasts, save DEGs for each pairwise contrast
+
+Here - contrast c("short_name", "Vulko", "Expi"))
+  Positive log2FC -> UP in vulko
+  Negative log2FC -> DOWN in vulko
+------------------------------------------------------------------------------------------------------------------------------------
+
+```{r}
+unique(metadata$short_name)
+```
+
+
+```{r fig.height=9}
+# Contrasts of interest
+neg <- c("Expi293_neg", "Vulko293_neg")
+criptoFc <- c("Expi293_CriptoFC", "Vulko293_CriptoFC")
+inhib <- c("Expi293_CriptoFC_Inhib", "Vulko293_CriptoFC_Inhib")
+ULK1 <- c("Expi293_CriptoFC_ULK1", "Vulko293_CriptoFC_ULK1")
+expi <- c("Expi293_neg", "Expi293_CriptoFC")
+vulko <- c("Vulko293_neg", "Vulko293_CriptoFC")
+
+combinations <- list(neg, criptoFc, inhib, ULK1, expi, vulko)
+
+DEGs_dfs <- list()
+DEGs_list <- list()
+
+for (comb in combinations) {
+  
+  j <- comb[1]
+  i <- comb[2]
+  
+  # Names
+  contrast_name <- paste(i, "_vs_", j, sep = "")
+
+  # Contrast conditions and save contrasts
+  res <- results(dds, contrast = c("short_name", i, j), cooksCutoff = FALSE)
+  write.csv(res, file.path(paste("../CriptoFc/results/DE/contrasts/contrast_", i, "_vs_", j, ".csv", sep = '')))
+  res_df <- data.frame(res)
+  
+  # Get DEGs df and list
+  res_degs_df <- res_df[res_df$padj < 0.05 & abs(res_df$log2FoldChange) > 1,]
+  res_degs_df[res_degs_df == ""] <- NA
+  res_degs_df <- na.omit(res_degs_df)
+  
+  res_degs_list <- as.character(row.names(res_degs_df))
+  
+  # Save DEGs df and list
+  DEGs_dfs[[contrast_name]] <- res_degs_df  
+  DEGs_list[[contrast_name]] <- res_degs_list  
+  
+  # Save DEG dfs of degs
+  write.csv(res_degs_df, file.path(paste("../CriptoFc/results/DE/contrasts/DEGs_", i, "_vs_", j, ".csv", sep = '')))
+  
+  # Write tsv
+  write.table(res_degs_df, file=file.path(paste("../CriptoFc/results/DE/contrasts/DEGs_", i, "_vs_", j, "_TSV.tsv", sep = '')),
+              quote=FALSE, sep='\t', col.names = NA)
+  
+  # Volcanos
+  pdf(file=paste("../CriptoFc/results/DE/volcanos/",contrast_name,".pdf", sep=""), width = 12, height = 10)
+  plot(EnhancedVolcano(res_df, lab = row.names(res_df),
+                       x = 'log2FoldChange',
+                       y = 'padj',
+                       labSize = 4,
+                       title = paste(i, "vs.", j)))
+  dev.off()
+}
+
+```
+
+
+
+

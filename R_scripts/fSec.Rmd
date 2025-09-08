@@ -1,0 +1,528 @@
+---
+title: "fSec"
+output: html_document
+date: "2025-01-22"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+library(ggplot2)
+library(tidyr)
+library(dbplyr)
+library(dplyr)
+library(MESS)
+library(ggpubr)
+library(rstatix)
+library(purrr)
+library(readxl)
+```
+
+
+# Function to get indicies of files matching protein + cell state condition
+```{r}
+get_index <- function(metadata, protein, cell){
+  
+  m <- metadata[metadata$protein %in% protein & metadata$cell %in% cell, ] # Select rows of metadata df
+  return (as.vector(m$file)) # Get ix of those row
+  
+}
+```
+
+
+# Functions to calculate baseline and AUC
+```{r}
+# Calculate baseline (avg(signal) for the first X time points)
+get_baseline <- function(df, nrows){ # Input df and nrows used to calc avg
+  return (mean(df$V2[1:nrows]))
+}
+
+# Calculate AUC of curve from specifeid time range (t1 & t2) and subtract area under baseline
+get_AUC <- function(df, t1, t2, baseline_range){
+  
+  baseline <- get_baseline(df, baseline_range) # Get baseline
+  
+  # Select range
+  df_filt <- df[df$V1 >= t1 & df$V1 <= t2, ]
+  df_filt$V2 <- df_filt$V2 - baseline
+  
+  auc <- auc(df_filt$V1, df_filt$V2) # Calcualte AUC
+  
+  return (round(auc,3))
+}
+```
+
+
+
+# Read in dfs, add AUC
+```{r}
+merge_dfs <- function(metadata, protein, cell, path, baseline_range, t1, t2){
+  
+   # Get index of files of interest
+  ix <- get_index(metadata, protein, cell)
+  
+  dfs <- list()
+  for (i in ix) {
+    filepath <- list.files(path, pattern = paste0(i, ".dx_FLD1A.CSV$"), full.names = TRUE)
+    df <- read.csv(filepath, header=FALSE)
+    
+    # Add AUC to df
+    df$AUC <- get_AUC(df, t1, t2, baseline_range)
+    
+    # Add metadata info
+    cell_type <- metadata[metadata$file == i, ]$cell
+    df$cell <- cell_type
+    df$protein <- protein
+    
+    # Add label to use for plotting
+    df$label <- paste(cell_type, " ", i,": ", get_AUC(df, t1, t2, baseline_range), sep="")
+    
+    dfs[[paste0("df", i)]] <- df
+  
+  }
+  
+  dfs_all <- do.call(rbind, dfs)
+  
+  return(dfs_all)
+  
+}
+  
+```
+
+
+# ############################################################################################################
+# PLOT FOR SINGLE PROTEINS
+# ############################################################################################################
+
+Function to process excel sheet with single protein measurements
+```{r}
+
+baseline_AUC <- function(df, t1, t2, column, baseline_nrows){
+  
+  df <- df[c('Time',column)]
+  
+  # Get baseline value
+  baseline <- mean(df[[column]][1:baseline_nrows])
+  
+  df_filt <- df[df$Time >= t1 & df$Time <= t2, ]
+  df_filt[[column]] <- df_filt[[column]] - baseline
+  auc <- auc(df_filt$Time, df_filt[[column]])
+  
+  df$AUC <- round(auc,3)
+  df$Label <- paste(column,": ", round(auc,3), sep="")
+  
+  names(df)[names(df) == column] <- 'Response'
+  
+  return (df)
+}
+
+```
+
+# Plotting function
+```{r}
+lineplot_one_track <- function(df, t1, t2, expi, vulko, baseline_nrows, out_path){
+  
+  df_expi <- baseline_AUC(df, t1, t2, expi, baseline_nrows)
+  df_vulko <- baseline_AUC(df, t1, t2, vulko, baseline_nrows)
+  
+  df_merged <- rbind(df_expi, df_vulko)
+  
+  y_label <- max(df_merged$Response)/1.5
+  AUC_ratio <- round(df_vulko$AUC[1]/df_expi$AUC[1],3) # Calc Vulko/Expi AUC ratio
+  protein <- sub("_Expi$", "", expi)
+  title <- paste0(protein, " - Vulko Expi AUC ratio: ", AUC_ratio) # Add ratio Vulko/Expi AUC to title
+  
+  my_colors <- c("#6db550", "#565c94")
+  
+  pdf(paste0(out_path, protein,"_no_rep.pdf"), width=8, height = 4)
+  
+  gg <- ggplot(df_merged, aes(x = Time, y = Response, color = Label)) +
+    geom_line() +
+    labs(title = title,
+         x = "Retention time [min]",
+         y = "Response [LU]",
+         color = "AUC in range") +
+    annotate("text", x = t1, y = y_label, label = paste0("T1 = ", t1,"\n"), size = 4, color = "#9e9e9e", angle=90) +
+    annotate("text", x = t2, y = y_label, label = paste0("\n","T2 = ", t2), size = 4, color = "#9e9e9e", angle=90) +
+    geom_vline(xintercept=t1, linetype="dashed", color="gray", linewidth=0.5) +
+    geom_vline(xintercept=t2, linetype="dashed", color="gray", linewidth=0.5) +
+    scale_color_manual(values = my_colors) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 14, hjust = 0.5),
+      axis.title.x = element_text(size = 13),    
+      axis.title.y = element_text(size = 13),   
+      axis.text.x = element_text(size = 12),    
+      axis.text.y = element_text(size = 12),
+      legend.title = element_text(size = 9),
+      legend.text = element_text(size = 9)
+    )
+  
+  print(gg)  
+  
+  dev.off()
+}
+
+
+```
+
+
+Read in single protein data & call plot function
+```{r}
+df <- read_excel("../data/fSec/Data_To_Analyze_publication_20241211_calculations.xlsx", skip = 2)[,c(1:15)]
+
+colnames(df) <- c('Time',
+                  'P2X3_Expi','P2X3_Vulko',
+                  'hTrpV4_Expi','hTrpV4_Vulko',
+                  'GPR43_Expi','GPR43_Vulko',
+                  'GPR75_Expi','GPR75_Vulko',
+                  'hTRPV4_148-787_Expi','hTRPV4_148-787_Vulko',
+                  'SERCA_PL-22-2273_Expi','SERCA_PL-22-2273_Vulko',
+                  'SERCA_PL-22-2274_Expi','SERCA_PL-22-2274_Vulko')
+
+baseline_nrows <- 200
+out_path <- "../results/fSec/no_rep/"
+
+
+lineplot_one_track(df, t1=6.0192, t2=10.4112, "P2X3_Expi", "P2X3_Vulko", baseline_nrows, out_path)
+lineplot_one_track(df, t1=8.6112, t2=12.6432, "hTrpV4_Expi", "hTrpV4_Vulko", baseline_nrows, out_path)
+lineplot_one_track(df, t1=6.0912, t2=10.7712, "GPR43_Expi", "GPR43_Vulko", baseline_nrows, out_path)
+lineplot_one_track(df, t1=5.9472, t2=10.0512, "GPR75_Expi", "GPR75_Vulko", baseline_nrows, out_path)
+lineplot_one_track(df, t1=6.0912, t2=10.7712, "hTRPV4_148-787_Expi", "hTRPV4_148-787_Vulko", baseline_nrows, out_path)
+lineplot_one_track(df, t1=8.5392, t2=10.0512, "SERCA_PL-22-2273_Expi", "SERCA_PL-22-2273_Vulko", baseline_nrows, out_path)
+lineplot_one_track(df, t1=8.5392, t2=10.0512, "SERCA_PL-22-2274_Expi", "SERCA_PL-22-2274_Vulko", baseline_nrows, out_path)
+
+```
+
+# ############################################################################################################
+# PLOT LINEPLOTS
+# ############################################################################################################
+
+
+Funcion to generate single lineplots
+```{r}
+single_lineplot <- function(protein, cell, metadata, data_path, out_path, t1, t2, baseline_range){
+
+  # For plotting fSec curves
+  dfs_fSec <- merge_dfs(metadata, protein, cell, data_path, baseline_range, t1, t2)
+
+  # For plotting barplots
+  df_AUCs <- unique(dfs_fSec[, c("label", "AUC", "cell", "protein")])
+  
+  # fSec plot
+  my_colors <- c("#6db550", "#a5de8e", "#3d8f31", "#c0bbf9", "#8896c8", "#565c94")
+  y_label <- max(dfs_fSec$V2)/1.5
+  
+  pdf(paste0(out_path, protein,"_fSec_single.pdf"), width=8, height = 4)
+  
+  gg <- ggplot(dfs_fSec, aes(x = V1, y = V2, color = label)) +
+    geom_line() +
+    labs(title = protein,
+         x = "Retention time [min]",
+         y = "Response [LU]",
+         color = "AUC in range") +
+    annotate("text", x = t1, y = y_label, label = paste0("T1 = ", t1,"\n"), size = 4, color = "#9e9e9e", angle=90) +
+    annotate("text", x = t2, y = y_label, label = paste0("\n","T2 = ", t2), size = 4, color = "#9e9e9e", angle=90) +
+    geom_vline(xintercept=t1, linetype="dashed", color="gray", linewidth=0.5) +
+    geom_vline(xintercept=t2, linetype="dashed", color="gray", linewidth=0.5) +
+    scale_color_manual(values = my_colors) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 14, hjust = 0.5),
+      axis.title.x = element_text(size = 13),    
+      axis.title.y = element_text(size = 13),   
+      axis.text.x = element_text(size = 12),    
+      axis.text.y = element_text(size = 12),
+      legend.title = element_text(size = 14),
+      legend.text = element_text(size = 12)
+    )
+  print(gg)
+  
+  dev.off()  
+  
+}
+
+```
+
+
+# Run single_lineplot for triplicates (GPR75, GIPR, hP2X3) and GFP
+```{r}
+# Inputs data
+metadata <- read.csv("../data/fSec/fSec_GFP_trip/meta.txt", sep="\t", colClasses = c("file"="character","protein"="character","cell"="character"))
+data_path <- "../data/fSec/fSec_GFP_trip/"
+out_path <- "../results/fSec/"
+
+baseline_range = 200
+
+################################################
+cell <- c("Vulko","Expi293")
+
+
+single_lineplot(protein="GPR75", cell, metadata, data_path, out_path, t1=6.30302157, t2=9.70144332, baseline_range)
+single_lineplot(protein="GIPR", cell, metadata, data_path, out_path, t1=6.205033425, t2=9.30105324, baseline_range)
+single_lineplot(protein="hP2X3", cell, metadata, data_path, out_path, t1=6.203852175, t2=10.00547651, baseline_range)
+
+single_lineplot(protein="GFP", cell=c("GFP_1_1000"), metadata, data_path, out_path, t1=9.605986471, t2=14.00521463, baseline_range)
+
+```
+  
+# ############################################################################################################
+# PLOT WITH SD SHADOW
+# ############################################################################################################
+
+Merge dataframes on time columns
+```{r}
+merge_times <- function(dfs) {
+  
+  merged_df <- Reduce(function(x, y) {
+    t_x <- grep("^Time", names(x), value = TRUE)[1]
+    t_y <- grep("^Time", names(y), value = TRUE)[1]
+    
+    merge(x, y, by.x = t_x, by.y = t_y, all = FALSE)
+  }, dfs)
+  
+  # Rename time column
+  names(merged_df)[grepl("^Time", names(merged_df))] <- "Time"
+  
+  return(merged_df)
+}
+```
+
+Read in csv files & set first measuring point to t=0
+```{r}
+merge_dfs_time <- function(metadata, protein, cell, data_path){
+  
+  # Get ix of files to read in
+  ix <- get_index(metadata, protein, cell)
+  
+  dfs <- list()
+  for (i in ix) {
+    
+    # Read in
+    filepath <- list.files(data_path, pattern = paste0(i, ".dx_FLD1A.CSV$"), full.names = TRUE)
+    df <- read.csv(filepath, header=FALSE)
+    
+    # Reset times
+    df$V1 <- df$V1 - df$V1[1]
+    df$V1 <- round(df$V1, 9)
+    
+    # Rename columns
+    colnames(df) <- c(paste0("Time_", i), paste0(protein, "_", i))
+    dfs[[paste0("df", i)]] <- df
+  }
+  
+  # Mere dataframes
+  merged_dfs <- merge_times(dfs)
+  
+  # Get average and SD values
+  merged_dfs$AVG <- rowMeans(merged_dfs[, grepl(protein, names(merged_dfs))])
+  merged_dfs$SD <- apply(merged_dfs[, grepl(protein, names(merged_dfs))], 1, sd)
+  
+  # Add cell line info
+  merged_dfs$cell_line <- cell
+  
+  merged_dfs <- select(merged_dfs, Time, AVG, SD, cell_line)
+
+  return(merged_dfs)
+}
+```
+
+
+# Plotting ufnciton lineplots wihd std shadow
+```{r}
+lineplot_sds <- function(protein, metadata, data_path, out_path, t1, t2){
+
+  df_vulko <- merge_dfs_time(metadata, protein, "Vulko", data_path)
+  df_expi <- merge_dfs_time(metadata, protein, "Expi293", data_path)
+  
+  combined_df <- rbind(df_vulko, df_expi)
+  
+  # Set y location for t1, t2 label placement
+  y_label <- max((combined_df$AVG)/1.5)
+  
+  # SAve plot
+  pdf(paste0(out_path, protein,"_fSec.pdf"), width=8, height = 4)
+  
+  gg <- ggplot(combined_df, aes(x = Time, y = AVG, color = cell_line, fill = cell_line)) +
+    geom_line(size = 0.7) +  
+    geom_ribbon(aes(ymin = AVG - SD, ymax = AVG + SD), alpha = 0.5, size = 0) +
+    labs(title = protein,
+         x = "Retention time [min]",
+         y = "Response [LU]",
+         color = "Cell line",
+         fill = "Cell line") +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(size = 14, hjust = 0.5),
+      axis.title.x = element_text(size = 15),    
+      axis.title.y = element_text(size = 15),   
+      axis.text.x = element_text(size = 15),    
+      axis.text.y = element_text(size = 15),
+      legend.title = element_text(size = 16),
+      legend.text = element_text(size = 14)
+    ) +
+    annotate("text", x = t1, y = y_label, label = paste0("T1 = ", t1,"\n"), size = 4, color = "#9e9e9e", angle=90) +
+    annotate("text", x = t2, y = y_label, label = paste0("\n","T2 = ", t2), size = 4, color = "#9e9e9e", angle=90) +
+    geom_vline(xintercept=t1, linetype="dashed", color="gray", linewidth=0.5) +
+    geom_vline(xintercept=t2, linetype="dashed", color="gray", linewidth=0.5) +
+    scale_color_manual(values = c("#6db550", "#8896c8")) +
+    scale_fill_manual(values = c("#6db550", "#8896c8")) 
+  
+  print(gg)
+  
+  dev.off()
+  
+}
+```
+
+```{r}
+metadata <- read.csv("../data/fSec/fSec_GFP_trip/meta.txt", sep="\t", colClasses = c("file"="character","protein"="character","cell"="character"))
+data_path <- "../data/fSec/fSec_GFP_trip/"
+out_path <- "../results/fSec/"
+
+lineplot_sds(protein="GPR75", metadata, data_path, out_path, t1 = 6.30302157, t2 = 9.70144332)
+lineplot_sds("GIPR", metadata, data_path, out_path, t1 = 6.205033425, t2 = 9.30105324)
+lineplot_sds("hP2X3", metadata, data_path, out_path, t1 = 6.203852175, t2 = 10.00547651)
+```
+
+# ############################################################################################################
+# BARPLOTS
+# ############################################################################################################
+
+# Get GFP info
+```{r}
+metadata <- read.csv("../data/fSec/fSec_GFP_trip/meta.txt", sep="\t", colClasses = c("file"="character","protein"="character","cell"="character"))
+data_path <- "../data/fSec/fSec_GFP_trip/"
+out_path <- "../results/fSec/"
+baseline_range = 200
+
+protein <- "GFP"
+cell <- "GFP_1_1000"
+
+t1_GFP <- 9.605986471
+t2_GFP <- 14.00521463
+
+df_GFP <- merge_dfs(metadata, protein, cell, data_path, baseline_range, t1_GFP, t2_GFP)
+
+GFP_AUC <- df_GFP$AUC[1]
+GFP_conc <- 4.8
+```
+
+```{r}
+GFP_AUC
+```
+
+# Specify times
+```{r}
+t1_GPR75 <- 6.30302157
+t2_GPR75 <- 9.70144332
+t1_GIPR <- 6.205033425
+t2_GIPR <- 9.30105324
+t1_hP2X3 <- 6.203852175
+t2_hP2X3 <- 10.00547651
+```
+
+# Get info for data
+```{r}
+protein <- c("GPR75","GIPR","hP2X3")
+cell <- c("Vulko","Expi293")
+
+ix <- get_index(metadata, protein, cell)
+
+temp_lists <- list()
+
+for (i in ix) {
+    filepath <- list.files(data_path, pattern = paste0(i, ".dx_FLD1A.CSV$"), full.names = TRUE)
+    df <- read.csv(filepath, header=FALSE)
+    
+    # Read in data + get AUC
+    cell_type <- metadata[metadata$file == i, ]$cell
+    protein <- metadata[metadata$file == i, ]$protein
+    
+    if (protein == "GPR75"){AUC <- get_AUC(df, t1_GPR75, t2_GPR75, baseline_range)}
+    if (protein == "GIPR"){AUC <- get_AUC(df, t1_GIPR, t2_GIPR, baseline_range)}
+    if (protein == "hP2X3"){AUC <- get_AUC(df, t1_hP2X3, t2_hP2X3, baseline_range)}
+    
+    # Create temp list of values to include
+    temp <- list(file = i,
+                 protein = protein,
+                 cell_type = cell_type,
+                 AUC = AUC)
+    
+    temp_lists[[i]] <- temp
+    
+}
+
+barplot_df <- do.call(rbind, lapply(temp_lists, as.data.frame))
+
+# Convert to concs using GFP: (protein AUC / GFP AUC) * GFP concentration
+barplot_df$Concs <- (barplot_df$AUC/GFP_AUC)*GFP_conc
+
+barplot_df
+```
+
+
+
+Group and do statistical test between groups
+```{r}
+grouped <- group_by(barplot_df, cell_type, protein)
+df_means <- summarise(grouped, mean=mean(Concs), sd=sd(Concs))
+
+stat.test <- barplot_df %>%
+            group_by(protein) %>%
+            t_test(Concs ~ cell_type)
+
+# Generate LFC
+FC_df <- df_means %>%
+  pivot_wider(names_from = cell_type, values_from = c(mean,sd), names_sep = "_") %>%
+  mutate(FC = round((mean_Vulko / mean_Expi293),3))
+
+
+stat.test <- stat.test %>% left_join(FC_df %>% select(protein, FC), by = "protein") %>%
+   mutate(label = paste0("FC ", FC, "\npval ", p))
+  
+
+FC_df
+stat.test
+
+```
+
+```{r}
+out_dir <- "../results/fSec/"
+
+pdf(paste0(out_dir, "barplot_label.pdf"), width=6, height = 5)
+
+# Create the plooot
+barplot <- ggplot(df_means, aes(x=protein, y=mean, fill=cell_type)) +
+  geom_bar(position=position_dodge(), stat="identity", colour='white') +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2,position=position_dodge(.9)) +
+  labs(x = "",
+       y = "Concentration [µg/mL]",
+       fill = "Cell line") +
+  scale_fill_manual(values = c("Vulko" = "#98b5eb", "Expi293" = "#9bd1ae"))+
+  theme_minimal() + coord_cartesian(clip = "off") + theme(plot.margin = margin(40, 10, 10, 10)) +
+      theme(
+      plot.title = element_text(size = 16, hjust = 0.5), 
+      axis.text.x = element_text(size = 16), 
+      axis.text.y = element_text(size = 16),
+      axis.title.x = element_text(size = 19),
+      axis.title.y = element_text(size = 19),
+      legend.text = element_text(size = 14),
+      legend.title = element_text(size = 16)
+      )
+
+stat.test <- stat.test %>% add_xy_position(x = "protein", dodge = 0.9)
+barplot + stat_pvalue_manual(stat.test,  label = "label", tip.length = 0)
+
+dev.off()
+```
+
+
+
+
+
+
+
