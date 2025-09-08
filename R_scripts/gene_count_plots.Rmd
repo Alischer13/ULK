@@ -48,7 +48,8 @@ plot_NormCounts <- function (data, metadata, genes, prot_name){
     geom_errorbar(aes(ymin = mean_expression - sd_expression, ymax = mean_expression + sd_expression),
                   position = position_dodge(width = 0.8), width = 0.25) +
     labs(x = "", y = "Counts (median of ratios norm)", title=paste0("Gene count in ", prot_name, " producers"), fill = "Cell line") +
-    scale_fill_manual(values = c("Expi" = "lightblue", "Vulko" = "lightgreen")) +
+    scale_fill_manual(values = c("Expi" = "#9bd1ae", "Vulko" = "#98b5eb")) +
+    ylim(0, 3000000) +
     theme_minimal() +
     theme(
       plot.title = element_text(size = 16, hjust = 0.5), 
@@ -87,7 +88,7 @@ plot_tpms <- function (tpms, metadata, genes, prot_name){
     geom_errorbar(aes(ymin = mean_expression - sd_expression, ymax = mean_expression + sd_expression),
                   position = position_dodge(width = 0.8), width = 0.25) +
     labs(x = "", y = "TPM", title=paste0("TPMs in ", prot_name, " producers"), fill = "Cell line") +
-    scale_fill_manual(values = c("Expi" = "lightblue", "Vulko" = "lightgreen")) +
+    scale_fill_manual(values = c("Expi" = "#9bd1ae", "Vulko" = "#98b5eb")) +
     theme_minimal() +
     theme(
       plot.title = element_text(size = 16, hjust = 0.5), 
@@ -112,7 +113,7 @@ Median of ratios normalized
 metadata <- read.table("../meta/metadata.txt", header = TRUE)
 estfact <- read.csv("../results/DE/estFactors_normalized_counts.csv")
 
-height = 6
+height = 5
 width = 4
 
 ############################################################################################################
@@ -185,3 +186,4 @@ pdf("../results/count_plots/tpms/ULK1_hP2X3_tpm.pdf", width = width, height = he
 plot_tpms(tpms, metadata, c("ULK1"), "hP2X3") # ULK1_hP2X3_tpm.pdf
 dev.off()
 ```
+
