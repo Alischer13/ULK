@@ -169,8 +169,6 @@ normalized_counts <- counts(estFactors, normalized=TRUE)
 write.csv(normalized_counts, file="../CriptoFc/results/DE/estFactors_normalized_counts.csv")
 
 ```
-dds <- estimateSizeFactors(dds)
-ncts <- counts(dds, normalized=TRUE)
 
 ------------------------------------------------------------------------------------------------------------------------------------
 6. Some dendrogram & PCA plotting

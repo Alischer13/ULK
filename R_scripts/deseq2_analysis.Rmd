@@ -158,8 +158,6 @@ dim(tpms_filtered)
 5. DESEQ2 -Differential gene expression analysis
 -----------------------------------------------------------------------------------------------------------------------------------
 
-
-
 5.1 Ensure rownames in metadata (samples) == colnames of count_matrix 
 - Convert to factor first
 ```{r}
@@ -249,10 +247,6 @@ select <- order(rv, decreasing=TRUE)[seq_len(min(ntop, length(rv)))] # select to
 pca <- stats::prcomp(t(assay(object)[select,])) # run PCA
 #pca$rotation[, seq_len(2)] # print first 2 PCs
 pca
-```
-
-```{r}
-View(vst)
 ```
 
 
@@ -357,7 +351,6 @@ metadata_ALL[,colnames] <- lapply(metadata_ALL[,colnames], factor)
 all(rownames(metadata_ALL) == colnames(CM_ALL))
 is.matrix(CM_ALL)
 ```
-
 
 ```{r}
 dds_object_ALL <- DESeqDataSetFromMatrix(CM_ALL, metadata_ALL, ~ cell_type) 
