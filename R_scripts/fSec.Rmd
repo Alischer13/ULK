@@ -490,19 +490,32 @@ stat.test
 
 ```
 
+
+
+
 ```{r}
 out_dir <- "../results/fSec/"
 
-pdf(paste0(out_dir, "barplot_label.pdf"), width=6, height = 5)
+condition_colors <- c("Expi293" = "#9bd1ae", "Vulko" = "#98b5eb")
+condition_labels <- c("Expi293" = "Expi", "Vulko" = "Expi-ULK1-KO")
+
+pdf(paste0(out_dir, "barplot_label_20260825.pdf"), width=6, height = 5)
 
 # Create the plooot
-barplot <- ggplot(df_means, aes(x=protein, y=mean, fill=cell_type)) +
-  geom_bar(position=position_dodge(), stat="identity", colour='white') +
-  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=.2,position=position_dodge(.9)) +
+barplot <- ggplot(df_means, aes(x=factor(protein), y=mean, fill=cell_type)) +
+  geom_bar(stat = "identity",
+           position = position_dodge(width=0.9),
+           width = 0.8) +
+  geom_errorbar(aes(ymin=mean-sd, ymax=mean+sd), width=0.2, position=position_dodge(0.9)) +
+  geom_point(data = grouped,
+             aes(x = factor(protein), y = Concs, fill = cell_type, group = cell_type),
+             position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.9),
+             color = "black", size = 1) +
   labs(x = "",
        y = "Concentration [µg/mL]",
        fill = "Cell line") +
-  scale_fill_manual(values = c("Vulko" = "#98b5eb", "Expi293" = "#9bd1ae"))+
+  scale_fill_manual(values = condition_colors,
+                    labels = condition_labels) +
   theme_minimal() + coord_cartesian(clip = "off") + theme(plot.margin = margin(40, 10, 10, 10)) +
       theme(
       plot.title = element_text(size = 16, hjust = 0.5), 

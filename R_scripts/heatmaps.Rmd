@@ -18,9 +18,6 @@ library(dbplyr)
 library(tidyr)
 ```
 
-Plot log2FC of genes related to autophagy (GO:0006914) as heatmap for the three transiently produced proteins in Vulko cs Expi
-
-
 
 Input from CriptoFC run
 ```{r}
@@ -32,8 +29,6 @@ comparisons = list(
 
 #save_file="../CriptoFc/results/heatmaps/CriptoFC_macroautophagy_0016236.pdf"
 #save_file="../CriptoFc/results/heatmaps/CriptoFC_ERstress_0034976.pdf"
-save_file="../CriptoFc/results/heatmaps/MVB_0097487.pdf"
-
 
 width=3.5
 height=6
@@ -172,7 +167,6 @@ generate_heatmap <- function(ontology, comparisons, save_file, width, height){
   save_heatmap_csv(df_LFC, df_padj, save_file)
   
 }
-
 
 ```
 
