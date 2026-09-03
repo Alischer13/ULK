@@ -1,0 +1,351 @@
+---
+title: "Viability and VCD passage"
+output: html_document
+date: "2026-03-05"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dbplyr)
+library(dplyr)
+library(tximport)
+library(rhdf5)
+library(ggplot2)
+library(DESeq2)
+library(tidyr)
+library(rstatix)
+library(rlang)
+library(scales)
+library(cowplot)
+```
+
+##############################################################################################################################
+Viability & VCD at day1 and harvest for TM producers
+##############################################################################################################################
+
+```{r}
+data <- read.csv("../data/cell_data/Transient_membrane_expression_cell_count_size.tsv", sep="\t")
+
+data_sum <- data %>%
+  separate_wider_delim(Sample_ID, delim="_", names = c("Sample", "ID")) %>%
+  group_by(Time, Sample, Protein) %>%
+  summarise(viab_cells_mean = mean(Viable_cells_per_mL),
+            viab_cells_sd = sd(Viable_cells_per_mL),
+            viab_perc_mean = mean(Viability_perc),
+            viab_perc_sd = sd(Viability_perc),
+            diam_mean = mean(Average_viable_diameter_um),
+            diam_sd = sd(Average_viable_diameter_um),
+            .groups = "drop"
+            )
+
+data_points <- data %>%
+  separate_wider_delim(Sample_ID, delim="_", names = c("Sample", "ID")) %>%
+  group_by(Time, Sample, Protein)
+
+```
+
+
+Function to plot features of interest fromn data_sum
+```{r}
+plot_feature <- function(condition_colors, condition_labels, data_sum,
+                         data_points, y_points,
+                         x_col, y_col, fill_col, grouping, errorbar_mean, errorbar_SD, y_title, fill_title){
+  
+  plot_object <- ggplot(data_sum, aes(x = !!sym(x_col), y = !!sym(y_col), fill = !!sym(fill_col))) + 
+    geom_bar(stat = "identity",
+           position = position_dodge(width=0.6),
+           width = 0.6) +
+  #coord_cartesian(ylim = c(16, 20)) + 
+  geom_point(data = data_points,
+             aes(x = !!sym(x_col), y = !!sym(y_points), fill = !!sym(fill_col)),
+             position = position_jitterdodge(jitter.width = 0.08, dodge.width = 0.6, seed = 1),
+             color = "black", size = 0.6) +
+  geom_errorbar(aes(ymin = !!sym(errorbar_mean) - !!sym(errorbar_SD), ymax = !!sym(errorbar_mean) + !!sym(errorbar_SD)),
+                position = position_dodge(width = 0.6), width = 0.4, size=0.4) +
+  scale_fill_manual(values = condition_colors,
+                    labels = condition_labels) +
+  facet_wrap(as.formula(paste("~",grouping)), strip.position = "bottom")+
+  labs(title = "",
+       x = "",
+       y = y_title,
+       fill = fill_title) +
+  theme_minimal()+
+  theme(strip.placement = "outside")+
+  theme(axis.title.y = element_text(size = 15, margin = margin(t = 10)),
+        axis.text.x = element_text(size = 10, margin = margin(t = 10)),
+        axis.text.y = element_text(size = 15, margin = margin(t = 10)),
+        text = element_text(size = 15))
+  
+  return(plot_object)
+  
+  }
+```
+
+
+# CELL DIAMETER
+```{r}
+########################################################
+# Group BY DAY
+########################################################
+condition_colors <- c("Expi" = "#9bd1ae", "Vulko" = "#98b5eb")
+condition_labels <- c("Expi" = "Expi", "Vulko" = "Expi-ULK1-KO")
+
+diam_plot_day <- plot_feature(condition_colors, condition_labels, data_sum,
+                            data_points, y_points = "Average_viable_diameter_um",
+                            x_col="Protein", y_col="diam_mean", fill_col="Sample", grouping="Time",
+                            errorbar_mean = "diam_mean", errorbar_SD = "diam_sd",
+                            y_title = "Average viable diameter (µm)",
+                            fill_title = "Sample group")
+
+pdf(file="../results/cell_data/TM_size_day_SD_20260825.pdf", height=5, width=8)
+print(diam_plot_day)
+dev.off()
+```
+
+# VIABLE CELL DENSITY
+```{r}
+########################################################
+# Group BY DAY
+########################################################
+condition_colors <- c("Expi" = "#9bd1ae", "Vulko" = "#98b5eb")
+condition_labels <- c("Expi" = "Expi", "Vulko" = "Expi-ULK1-KO")
+
+VCD_plot_day <- plot_feature(condition_colors, condition_labels, data_sum,
+                            data_points, y_points = "Viable_cells_per_mL",
+                            x_col="Protein", y_col="viab_cells_mean", fill_col="Sample", grouping="Time",
+                            errorbar_mean = "viab_cells_mean", errorbar_SD = "viab_cells_sd",
+                            y_title = "Viable (x10^6) cells/mL",
+                            fill_title = "Sample group")
+
+pdf(file="../results/cell_data/TM_VCD_day_SD_20260825.pdf", height=5, width=8)
+print(VCD_plot_day)
+dev.off()
+```
+
+# VIABILITY
+```{r}
+########################################################
+# Group BY DAY
+########################################################
+condition_colors <- c("Expi" = "#9bd1ae", "Vulko" = "#98b5eb")
+condition_labels <- c("Expi" = "Expi", "Vulko" = "Expi-ULK1-KO")
+
+VIAB_plot_day <- plot_feature(condition_colors, condition_labels, data_sum,
+                            data_points, y_points = "Viability_perc",
+                            x_col="Protein", y_col="viab_perc_mean", fill_col="Sample", grouping="Time",
+                            errorbar_mean = "viab_perc_mean", errorbar_SD = "viab_perc_sd",
+                            y_title = "Viability (%)",
+                            fill_title = "Sample group")
+
+pdf(file="../results/cell_data/TM_viability_day_SD_20260825.pdf", height=5, width=8)
+print(VIAB_plot_day)
+dev.off()
+```
+
+
+LFC and pvals - GROUPED BY DAY
+
+# VCD
+data_sum: viab_cells_mean
+data: Viable_cells_per_mL
+
+# Viability (%)
+data_sum: viab_perc_mean
+data: Viability_perc
+
+# Diameter (um)
+data_sum: diam_mean
+data: Average_viable_diameter_um
+
+
+Statistics for VCD
+```{r}
+# Choose day
+#group = "Day1"
+group = "Harvest"
+
+# Day1
+FC <- data_sum %>%
+  filter(Time==group) %>%
+  filter(Protein %in% c("GPR75", "GIPR", "P2X3")) %>%
+  group_by(Protein) %>%
+  summarise(FoldChange = (viab_cells_mean[Sample == "Expi"] / viab_cells_mean[Sample == "Vulko"]), .groups = "drop")
+
+FC_data <- data %>%
+    filter(Time==group) %>%
+    filter(Protein %in% c("GPR75", "GIPR", "P2X3")) %>%
+    separate_wider_delim(Sample_ID, delim="_", names = c("Sample", "ID")) %>%
+    group_by(Protein) %>%
+    t_test(Viable_cells_per_mL ~ Sample, comparisons = list(c("Expi", "Vulko"))) %>%
+    left_join(FC %>% select(Protein, FoldChange), by = "Protein") 
+
+FC_data
+```
+
+Statistics for Viability %
+```{r}
+# Choose day
+#group = "Day1"
+group = "Harvest"
+
+# Day1
+FC <- data_sum %>%
+  filter(Time==group) %>%
+  filter(Protein %in% c("GPR75", "GIPR", "P2X3")) %>%
+  group_by(Protein) %>%
+  summarise(FoldChange = (viab_perc_mean[Sample == "Expi"] / viab_perc_mean[Sample == "Vulko"]), .groups = "drop")
+
+FC_data <- data %>%
+    filter(Time==group) %>%
+    filter(Protein %in% c("GPR75", "GIPR", "P2X3")) %>%
+    separate_wider_delim(Sample_ID, delim="_", names = c("Sample", "ID")) %>%
+    group_by(Protein) %>%
+    t_test(Viability_perc ~ Sample, comparisons = list(c("Expi", "Vulko"))) %>%
+    left_join(FC %>% select(Protein, FoldChange), by = "Protein") 
+
+FC_data
+```
+
+
+
+##############################################################################################################################
+Passage data plotting - with/without CriptoFc expression
+##############################################################################################################################
+
+```{r}
+passage_data <- read.csv("../data/cell_data/passage_data.tsv", sep="\t")
+passage_data
+```
+
+# Function to write 10^ y axis laabels
+```{r}
+y_axis_labeling <- function(x){
+  parse(text=gsub("e"," %*% 10^", scales::scientific_format()(x)))
+}
+```
+
+# Viable cell density
+```{r}
+condition_colors <- c("Expi293F" = "#4A7BB7",
+                      "Expi293F_ULK1_KO" = "#DD3D2D",
+                      "Expi293F_CriptoFc" = "#98CAE1",
+                      "Expi293F_CriptoFc_ULK1_KO" = "#FDB366")
+
+VCD_passage <- ggplot(passage_data, aes(x = Culture_time_days, y = Viable_density, color = Line)) +
+  geom_line() +
+  coord_cartesian(ylim=c(0,6500000)) + 
+  scale_y_continuous(labels = y_axis_labeling) +
+  labs(title = "",
+       x = "Days",
+       y = "Viable cell density [cells/ml]",
+       color = "Cell line") +
+  scale_color_manual(values = condition_colors) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, hjust = 0.5),
+    axis.title.x = element_text(size = 14),    
+    axis.text.x = element_text(size = 12),    
+    axis.text.y = element_text(size = 12),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 10),
+    aspect.ratio = 0.5
+  )
+
+pdf(file="../results/cell_data/passage_VCD.pdf", height=4, width=8)
+print(VCD_passage)
+dev.off()
+
+```
+
+Doubling time
+```{r}
+condition_colors <- c("Expi293F" = "#4A7BB7",
+                      "Expi293F_ULK1_KO" = "#DD3D2D",
+                      "Expi293F_CriptoFc" = "#98CAE1",
+                      "Expi293F_CriptoFc_ULK1_KO" = "#FDB366")
+
+doubling_time <- ggplot(passage_data, aes(x = Culture_time_days, y = Population_dubling_time_h, color = Line)) +
+  geom_line() +
+  coord_cartesian(ylim=c(0,50)) + 
+  labs(title = "",
+       x = "Days",
+       y = "Doubling time (h)",
+       color = "Cell line") +
+  scale_color_manual(values = condition_colors) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, hjust = 0.5),
+    axis.title.x = element_text(size = 14),    
+    axis.text.x = element_text(size = 12),    
+    axis.text.y = element_text(size = 12),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 10),
+    aspect.ratio = 0.5
+  )
+
+
+pdf(file="../results/cell_data/passage_doubling.pdf", height=4, width=8)
+print(doubling_time)
+dev.off()
+
+```
+
+
+Plot VCD and doubling time data in same plot
+```{r}
+condition_colors <- c("Expi293F" = "#4A7BB7",
+                      "Expi293F_ULK1_KO" = "#DD3D2D",
+                      "Expi293F_CriptoFc" = "#98CAE1",
+                      "Expi293F_CriptoFc_ULK1_KO" = "#FDB366")
+
+
+VCD_passage <- ggplot(passage_data, aes(x = Culture_time_days, y = Viable_density, color = Line)) +
+  geom_line() +
+  coord_cartesian(ylim=c(0,6500000)) + 
+  scale_y_continuous(labels = y_axis_labeling) +
+  labs(title = "",
+       x = "Days",
+       y = "Viable cell density [cells/ml]",
+       color = "Cell line") +
+  scale_color_manual(values = condition_colors) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, hjust = 0.5),
+    axis.title.x = element_text(size = 14),    
+    axis.text.x = element_text(size = 12),    
+    axis.text.y = element_text(size = 12),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 10),
+    aspect.ratio = 0.4
+  )
+
+doubling_time <- ggplot(passage_data, aes(x = Culture_time_days, y = Population_dubling_time_h, color = Line)) +
+  geom_line() +
+  coord_cartesian(ylim=c(0,50)) + 
+  labs(title = "",
+       x = "Days",
+       y = "Doubling time (h)",
+       color = "Cell line") +
+  scale_color_manual(values = condition_colors) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, hjust = 0.5),
+    axis.title.x = element_text(size = 14),    
+    axis.text.x = element_text(size = 12),    
+    axis.text.y = element_text(size = 12),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 10),
+    aspect.ratio = 0.4
+  )
+
+pdf(file="../results/cell_data/passage_VCD_doubling.pdf", height=6, width=9)
+plot_grid(VCD_passage, doubling_time, ncol = 1, align = "v", axis="lr")
+dev.off()
+```
+
+
+
+

@@ -1,0 +1,607 @@
+---
+title: "Validation experiments: SDS-PAGE, BCA, LC3, organelle markers, GFP"
+output: html_document
+date: "2026-05-19"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyr)
+library(tibble)
+library(stringr)
+library(dplyr)
+library(rstatix)
+library(ggplot2)
+```
+
+##########################################################################################
+SDS-PAGE INTENSITY
+##########################################################################################
+
+```{r}
+data_SDS <- read.csv("../data/validation_data/260521 Gel1 ULK1 analys.csv", sep=";", header = TRUE, skip=1)
+names(data_SDS) <- c('Lane','Band_nr','Relative_front','Adj_vol_int', 'Vol_int', 'Abs_quant', 'Rel_quant', 'X')
+
+data_SDS <- data_SDS %>%
+  group_by(Lane) %>%
+  summarize(Adj_vol_int = sum(Adj_vol_int)) %>%
+  drop_na() %>%
+  mutate(Sample = case_when(
+    Lane %in% c(2,3,4) ~ "Expi293",
+    Lane %in% c(5,6,7) ~ "Expi293_ULK1_KO",
+    Lane == 1 ~ "Ladder")
+    )
+
+data_SDS
+```
+
+# 1. Plot SDS grouped replicates
+# 1.1 Statistix: 
+```{r}
+# 1. Get fold change
+FC = mean(data_SDS$Adj_vol_int[data_SDS$Sample == "Expi293_ULK1_KO"]) /
+     mean(data_SDS$Adj_vol_int[data_SDS$Sample == "Expi293"])
+FC = round(FC,2)
+
+# 2. get pval between Expi293_ULK1_KO & Expi293
+p_val <- data_SDS %>%
+  filter(Sample != "Ladder") %>%
+  t_test(Adj_vol_int ~ Sample,
+         comparisons = list(c("Expi293", "Expi293_ULK1_KO"))) %>%
+  pull(p)
+p_val = round(p_val,4)
+
+# Extract points to plot in barplot (exclude ladder point)
+data_SDS_points <- data_SDS %>% filter(Sample != "Ladder")
+
+# 3.Get standard deviation within groups (for error bars)
+SDS_stats <- data_SDS %>%
+  filter(Sample != "Ladder") %>%
+  group_by(Sample) %>%
+  summarize(
+    mean = mean(Adj_vol_int),
+    sd = sd(Adj_vol_int),
+    .groups = "drop"
+  )
+```
+
+# 1.2 Plot
+```{r}
+condition_colors <- c("Expi293" = "#9bd1ae", "Expi293_ULK1_KO" = "#98b5eb")
+condition_labels <- c("Expi293" = "Expi", "Expi293_ULK1_KO" = "Expi ULK1 KO")
+
+# Function to get nicer y axis labels
+y_axis_labeling <- function(x){
+  parse(text=gsub("e"," %*% 10^", scales::scientific_format()(x)))
+}
+
+SDS_plot <- ggplot(SDS_stats, aes(x = factor(Sample),
+                      y = mean,
+                      fill = Sample)) + 
+  geom_bar(stat = "identity",
+           width = 0.75,
+           position = position_dodge(0.9),
+           alpha = 0.8) +
+  geom_point(data = data_SDS_points,
+             aes(x = factor(Sample), y = Adj_vol_int),
+             position = position_jitter(width =0.08),
+             color = "black", size = 1) +
+  scale_fill_manual(values = condition_colors) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
+                position = position_dodge(0.9), width = 0.25) +
+  scale_y_continuous(labels = y_axis_labeling) + 
+  labs(title = "",
+     x = " ",
+     y = "Adjusted volume intensity")+
+  geom_segment(aes(x = 1, y = 4500000, xend = 2, yend = 4500000)) +
+  annotate(geom = "text", x = 1.5, y = 4700000, label = paste0("FC: ", FC,"   (", "p=", p_val,")"), hjust = "center", size=3) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  theme(
+    plot.title = element_text(size = 14, hjust = 0.5),
+    axis.title.y = element_text(size = 16),    
+    axis.text.y = element_text(size = 14),
+    axis.text.x = element_text(size = 14))
+
+pdf(file="../results/validation_experiments/SDS_total_20260825.pdf", height=4, width=2.5)
+print(SDS_plot)
+dev.off()
+```
+
+# 2. Plot and compare LANES AND BANDS
+```{r}
+data_SDS <- read.csv("../data/validation_data/260521 Gel1 ULK1 analys.csv", sep=";", header = TRUE, skip=1)
+names(data_SDS) <- c('Lane','Band_nr','Relative_front','Adj_vol_int', 'Vol_int', 'Abs_quant', 'Rel_quant', 'X')
+
+data_SDS <- data_SDS[!is.na(data_SDS$Adj_vol_int),] # Drop NA rows at end
+data_SDS <- data_SDS %>% filter(Lane != 1) # Don't plot ladder
+
+# Function to get nicer y axis labels
+y_axis_labeling <- function(x){
+  parse(text=gsub("e"," %*% 10^", scales::scientific_format()(x)))
+}
+
+SDS_bands_plot <- ggplot(data_SDS, aes(x=Lane, y = Adj_vol_int, fill = Band_nr, group = Band_nr)) + 
+  geom_bar(stat = "identity",
+           position = "dodge",
+           width = 0.8) +
+  scale_x_continuous(breaks = data_SDS$Lane) +
+  scale_y_continuous(labels = y_axis_labeling) + 
+  labs(title = "",
+     x = " ",
+     y = "Adjusted volume intensity",
+     fill = "Band nr")+
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, hjust = 0.5),
+    axis.title.y = element_text(size = 16),    
+    axis.text.y = element_text(size = 14),
+    axis.text.x = element_text(size = 14))
+
+pdf(file="../results/validation_experiments/SDS_separated_lanes_and_bands.pdf", height=4, width=8)
+print(SDS_bands_plot)
+dev.off()
+```
+
+# 3. Separate BANDS
+```{r}
+data_SDS <- read.csv("../data/validation_data/260521 Gel1 ULK1 analys.csv", sep=";", header = TRUE, skip=1)
+names(data_SDS) <- c('Lane','Band_nr','Relative_front','Adj_vol_int', 'Vol_int', 'Abs_quant', 'Rel_quant', 'X')
+
+data_SDS <- data_SDS[!is.na(data_SDS$Adj_vol_int),] # Drop NA rows at end
+
+data_SDS <- data_SDS %>% filter(Lane != 1) %>%
+  select(Lane, Band_nr, Adj_vol_int) %>%
+  mutate(Group = case_when(
+    Lane %in% c(2,3,4) ~ "Expi",
+    Lane %in% c(5,6,7) ~ "Expi_ULK1_KO")
+  )
+  
+SDS_bands_stats <- data_SDS %>%
+  group_by(Band_nr, Group) %>%
+    reframe(
+    mean = mean(Adj_vol_int),
+    sd = sd(Adj_vol_int))
+
+SDS_bands_stats
+```
+
+```{r}
+SDS_bands_pvals <- data_SDS %>%
+  group_by(Band_nr) %>%
+  t_test(Adj_vol_int ~ Group, comparisons = list(c("Expi", "Expi_ULK1_KO")))
+  
+SDS_bands_pvals
+```
+
+
+```{r}
+condition_colors <- c("Expi" = "#9bd1ae", "Expi_ULK1_KO" = "#98b5eb")
+condition_labels <- c("Expi" = "Expi WT", "Expi_ULK1_KO" = "ULK1 KO")
+
+SDS_group_bands_plot <- ggplot(SDS_bands_stats, aes(x=Band_nr, y = mean, fill = Group, group = Group)) + 
+  geom_bar(stat = "identity",
+           position = position_dodge(width=0.6),
+           width = 0.6) +
+  scale_x_continuous(breaks = SDS_bands_stats$Band_nr) +
+  scale_y_continuous(labels = y_axis_labeling) + 
+  labs(title = "",
+     x = " ",
+     y = "Adjusted volume intensity",
+     fill = "Band nr")+
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
+                position = position_dodge(width = 0.6),
+                width = 0.4, size=0.3) +
+  scale_fill_manual(values = condition_colors,
+                    labels = condition_labels) +
+  geom_point(data = data_SDS,
+             aes(x = Band_nr, y = Adj_vol_int, color = Group, group = Group),
+             position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.6),
+             color = "black", size = 0.5) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(size = 14, hjust = 0.5),
+    axis.title.y = element_text(size = 16),    
+    axis.text.y = element_text(size = 13),
+    axis.text.x = element_text(size = 13))
+
+
+pdf(file="../results/validation_experiments/SDS_separated_bands_20260825.pdf", height=4, width=8)
+print(SDS_group_bands_plot)
+dev.off()
+```
+
+
+##########################################################################################
+FIGURE BCA
+##########################################################################################
+
+```{r}
+BCA <- read.csv("../data/validation_data/ULK1_BCA_assay.csv", sep=",", header = TRUE) # Read in df
+
+BCA <- BCA %>% pivot_longer(
+  cols = c("expi_ULK1_KO", "expi"),
+  values_to = "Protein",
+  names_to = "CellLine")
+
+```
+
+
+```{r}
+BCA_FC = mean(BCA$Protein[BCA$CellLine == "expi_ULK1_KO"]) / mean(BCA$Protein[BCA$CellLine == "expi"])
+BCA_FC <- round(BCA_FC, 2)
+BCA_FC
+
+BCA_p <- BCA %>%
+  t_test(Protein ~ CellLine,
+         comparisons = list(c("expi_ULK1_KO", "expi")),
+         paired=FALSE) %>%
+  pull(p)
+BCA_p <- round(BCA_p,4)
+BCA_p
+
+BCA_stats <- BCA %>%
+  group_by(CellLine) %>%
+  reframe(
+    mean = mean(Protein),
+    sd = sd(Protein),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    CellLine = factor(CellLine, levels = c("expi", "expi_ULK1_KO"))
+    )
+
+BCA_stats
+```
+
+
+```{r}
+condition_colors <- c("expi" = "#9bd1ae", "expi_ULK1_KO" = "#98b5eb")
+condition_labels <- c("expi" = "Expi", "expi_ULK1_KO" = "Expi ULK1 KO")
+
+BCA_plot <- ggplot(BCA_stats, aes(x=factor(CellLine), y=mean, fill=CellLine)) +
+  geom_bar(stat = "identity", width = 0.75, position = position_dodge(0.9),alpha = 0.8) +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd),
+                position = position_dodge(0.9), width = 0.25) +
+  geom_point(data = BCA,
+             aes(x = factor(CellLine), y = Protein),
+             position = position_jitter(width =0.08),
+             color = "black", size = 1) +
+  labs(title = "",
+     x = " ",
+     y = "Protein (mg/mL sample)") +
+  scale_fill_manual(values = condition_colors,
+                    labels = condition_labels) +
+  geom_segment(aes(x = 1, y = 0.37, xend = 2, yend = 0.37)) +
+  annotate(geom = "text", x = 1.5, y = 0.42, label = paste0("FC: ", BCA_FC,"   (", "p=", BCA_p,")"), hjust = "center", size = 3) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  theme(
+    plot.title = element_text(size = 14, hjust = 0.5),
+    axis.title.y = element_text(size = 16),    
+    axis.text.y = element_text(size = 14),
+    axis.text.x = element_text(size = 14))
+
+pdf(file="../results/validation_experiments/BCA_total_20260825.pdf", height=4, width=2.5)
+print(BCA_plot)
+dev.off()
+```
+
+
+##########################################################################################
+FIGURE LC3 (Figure 4B)
+##########################################################################################
+
+Read in mnormalized data
+```{r}
+data_LC3 <- read.csv("../data/validation_data/AZ data/LC3 Normalised (2).csv", sep=",", header = TRUE)
+data_LC3 <- data_LC3[1:11]
+names(data_LC3) <- c('Group', paste0("neg_",1:5), paste0("pos_",1:5)) # Set header names
+
+# Pivot df
+data_LC3 <- data_LC3 %>% pivot_longer(cols = !c(Group), names_to = "Condition", values_to = "FC") # Pivot longer 
+
+# Fix names
+data_LC3$Group <-  sub("Expi\nULK1 KO", "ULK1_KO", data_LC3$Group) # Add sample type
+data_LC3$Condition <-  sub("_.*", "", data_LC3$Condition) # Add sample type
+data_LC3$Sample_type <-  paste0(data_LC3$Group, "_", data_LC3$Condition)
+
+# Subset to plot
+data_LC3_subset <- data_LC3 %>% filter(Sample_type %in% c("Expi_neg","Expi_pos", "ULK1_KO_neg","ULK1_KO_pos"))
+data_LC3_subset
+```
+```{r}
+# 1. Get fold changes
+FC_WT = mean(data_LC3_subset$FC[data_LC3_subset$Sample_type == "Expi_pos"]) / mean(data_LC3_subset$FC[data_LC3_subset$Sample_type == "Expi_neg"])
+FC_KO = mean(data_LC3_subset$FC[data_LC3_subset$Sample_type == "ULK1_KO_pos"]) / mean(data_LC3_subset$FC[data_LC3_subset$Sample_type == "ULK1_KO_neg"])
+
+FC_WT = round(FC_WT,2)
+FC_KO = round(FC_KO,2)
+
+# 2. Get pvals
+p_WT <- data_LC3_subset %>%
+  filter(Sample_type %in% c("Expi_pos","Expi_neg")) %>%
+  t_test(FC ~ Sample_type, comparisons = list(c("Expi_pos", "Expi_neg"))) %>% pull(p)
+p_WT <- round(p_WT,4)
+
+p_KO <- data_LC3_subset %>%
+  filter(Sample_type %in% c("ULK1_KO_pos","ULK1_KO_neg")) %>%
+  t_test(FC ~ Sample_type, comparisons = list(c("ULK1_KO_pos", "ULK1_KO_neg"))) %>% pull(p)
+p_KO <- round(p_KO,4)
+
+# 3.Get standard deviation within groups (for error bars)
+LC3_stats <- data_LC3_subset %>%
+  filter(Sample_type %in% c("Expi_pos","Expi_neg", "ULK1_KO_pos","ULK1_KO_neg")) %>%
+  group_by(Group, Condition) %>%
+  reframe(
+    mean = mean(FC),
+    sd = sd(FC),
+    sem = sd(FC) /sqrt(length(FC)),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    Group = factor(Group, levels = c("Expi", "ULK1_KO")),
+    Condition = factor(Condition, levels = c("neg", "pos"))
+    )
+
+LC3_stats
+```
+
+ANOVA
+```{r}
+model <- aov(FC ~ Group * Condition, data = data_LC3_subset)
+summary(model)
+```
+
+
+```{r}
+KO_bar_label <- paste0("Fold-change: ", FC_KO,"   (", "p=", p_KO,")")
+WT_bar_label <- paste0("Fold-change: ", FC_WT,"   (", "p=", p_WT,")")
+
+condition_colors <- c("neg" = "#6EA6CD", "pos" = "#364B9A")
+condition_labels <- c("neg" = "BafA1 (-)", "pos" = "BafA1 (+)")
+
+LC3_plot <- ggplot(LC3_stats, aes(x = factor(Group), y = mean, fill = Condition)) + 
+  geom_bar(stat = "identity",
+           position = position_dodge(width = 0.9),
+           width = 0.75,
+            alpha = 0.9) +
+  geom_errorbar(aes(ymin = mean - sem, ymax = mean + sem),
+                position = position_dodge(0.9), width = 0.25) +
+  scale_fill_manual(values = condition_colors,
+                    labels = condition_labels) +
+  geom_point(data = data_LC3_subset,
+             aes(x = factor(Group), y = FC, fill = Condition),
+             position = position_jitterdodge(jitter.width = 0.08, dodge.width = 0.9, seed = 1),
+             color = "black", size = 2.5) +
+  labs(title = "LC3",
+       x = "",
+       y = "LC3 puncta (fold change)",
+       fill = "") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 8)) +
+  geom_segment(aes(x = 0.75, y = 2.5, xend = 1.25, yend = 2.5)) +
+  geom_segment(aes(x = 1.75, y = 3, xend = 2.25, yend = 3)) +
+  annotate(geom = "text", x = 1, y = 2.7, label = WT_bar_label, hjust = "center") +
+  annotate(geom = "text", x = 2, y = 3.2, label = KO_bar_label, hjust = "center") +
+    theme(
+    plot.title = element_text(size = 15, hjust = 0.5), 
+    axis.text.x = element_text(size = 15), 
+    axis.text.y = element_text(size = 15),
+    axis.title.x = element_text(size = 17),
+    axis.title.y = element_text(size = 17),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 15)
+    )
+
+pdf(file="../results/validation_experiments/LC3_SEM_20260825.pdf", height=6, width=5.5)
+print(LC3_plot)
+dev.off()
+```
+
+
+
+##########################################################################################
+ORGANELLES (Figure 4D/E/F)
+##########################################################################################
+
+Organelles - Number (Normalised).csv
+Organelles - Object Intensity (Normalised).csv
+Organelles - Size (Normalised).csv
+
+Function to read in organelle data and pivot long
+```{r}
+# READ IN ORGANELLE DATA
+read_organelle_data <- function(csv_file){
+  df <- as.data.frame(t(csv_file))
+  colnames(df) <- df[1,]
+  df <- df[-1,]
+  
+  df <- df %>%
+    rownames_to_column("Group") %>%
+    mutate(Group = case_when(
+      str_starts(Group, "Expi.ULK1.KO") ~ "Expi_ULK1_KO",
+      str_starts(Group, "Expi") ~ "Expi",
+      TRUE ~ Group)) %>%
+    pivot_longer(cols=!c("Group"), names_to = "Protein", values_to = "Measurement") %>%
+    mutate(Measurement = as.double(gsub(",", ".", Measurement))) %>%
+    mutate(Measurement = as.double(Measurement))  
+  return(df)
+}
+
+# GET SD, SEM, MEAN OF ORGANELLE DATA
+make_plot_df <- function(df){
+  df_plot <- df %>%
+    group_by(Group, Protein) %>%
+    reframe(mean = mean(Measurement),
+            sd = sd(Measurement),
+            sem = sd(Measurement) /sqrt(length(Measurement)),
+            Group_Prot = paste0(Group, "_", "Protein")) %>%
+    mutate(Group = factor(Group, levels = c("Expi","Expi_ULK1_KO"))) %>%
+    mutate(Protein = factor(Protein, levels = c("EEA1", "LAMP1", "TOM20", "GM130", "CANX")))
+  return(df_plot)
+}
+
+# CALCULATE PVAL ORGANELLE DATA
+get_pvals <- function(df){
+  p_df <- df %>%
+    group_by(Protein) %>%
+    t_test(Measurement ~ Group, paired = FALSE, comparisons = list(c("Expi", "Expi_ULK1_KO")))
+  return(p_df)
+}
+
+```
+
+Plot organelles
+```{r}
+plot_organelles <- function(df, df_points, set_title, set_y){
+    
+  condition_colors <- c("Expi" = "#9bd1ae", "Expi_ULK1_KO" = "#98b5eb")
+  condition_labels <- c("Expi" = "Expi", "Expi_ULK1_KO" = "Expi ULK1 KO")
+  
+  organelle_plot <- ggplot(df, aes(x=Protein, y = mean, fill = Group, group = Group)) + 
+    geom_bar(stat = "identity",
+           position = position_dodge(width=0.6),
+           width = 0.6) +
+    geom_errorbar(aes(ymin = mean - sem,
+                      ymax = mean + sem),
+                  position = position_dodge(0.6), width = 0.25) +
+    scale_fill_manual(values = condition_colors,
+                      labels = condition_labels) +
+    labs(title = set_title,
+         x = "",
+         y = set_y,
+         fill = "") +
+    geom_point(data = df_points,
+             aes(x = Protein, y = Measurement, fill = Group, group = Group),
+             position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.6),
+             color = "black", size = 0.6) +
+    coord_cartesian(ylim = c(0,1.25)) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 8)) +
+      theme(
+      plot.title = element_text(size = 15, hjust = 0.5), 
+      axis.text.x = element_text(size = 15), 
+      axis.text.y = element_text(size = 15),
+      axis.title.x = element_text(size = 17),
+      axis.title.y = element_text(size = 17),
+      legend.text = element_text(size = 10),
+      legend.title = element_text(size = 15)
+      )
+  organelle_plot
+}
+```
+
+
+# Get all organelles
+```{r}
+org_intesity <- read.csv("../data/validation_data/prism_v2/Organelles - Object Intensity (Normalised).csv", sep=";", header = TRUE)
+org_nr <- read.csv("../data/validation_data/prism_v2/Organelles - Number (Normalised).csv", sep=";", header = TRUE)
+org_size <- read.csv("../data/validation_data/prism_v2/Organelles - Size (Normalised).csv", sep=";", header = TRUE)
+
+# INTENSITY - NORMALIZED
+org_intesity <- read_organelle_data(org_intesity)
+org_intesity_plot <- make_plot_df(org_intesity)
+org_intesity_p <- get_pvals(org_intesity)
+pdf(file="../results/validation_experiments/ORG_INTENSITY_SEM_20260825.pdf", height=5, width=6)
+plot_organelles(org_intesity_plot, org_intesity,
+                "Organelle marker intensity",
+                paste0("Intensity fold-change", "\n","(normalized to Expi)"))
+dev.off()
+
+# NUMBER - NORMALIZED
+org_nr <- read_organelle_data(org_nr)
+org_nr_plot <- make_plot_df(org_nr)
+org_nr_p <- get_pvals(org_nr)
+pdf(file="../results/validation_experiments/ORG_NUMBER_SEM_20260825.pdf", height=5, width=6)
+plot_organelles(org_nr_plot, org_nr,
+                "Marker positive object number",
+                paste0("Number fold-change", "\n","(normalized to Expi)"))
+dev.off()
+
+# SIZE - NORMALIZED
+org_size <- read_organelle_data(org_size)
+org_size_plot <- make_plot_df(org_size)
+org_size_p <- get_pvals(org_size)
+pdf(file="../results/validation_experiments/ORG_SIZE_SEM_20260825.pdf", height=5, width=6)
+plot_organelles(org_size_plot, org_size,
+                "Marker positive object size (px^2)",
+                paste0("Size fold-change", "\n","(normalized to Expi)"))
+dev.off()
+```
+
+
+```{r}
+org_intesity_p
+org_nr_p
+org_size_p
+```
+
+
+
+##########################################################################################
+Supplementary 5
+##########################################################################################
+
+```{r}
+# Count samples of each protein type?
+data_memb_non_na <- data_memb[!is.na(data_memb$Intensity),]
+table(data_memb_non_na$Condition)
+```
+
+```{r}
+data_memb <- read.csv("../data/validation_data/Membrane_Cell Intensity.csv", sep=",", header = TRUE)
+data_memb <- data_memb %>% pivot_longer(cols=everything(), names_to = "Condition", values_to = "Intensity") %>%
+  mutate(
+    Group = case_when(
+      str_detect(Condition, "WT") ~"WT",
+      str_detect(Condition, "ULK1.KO") ~"ULK1_KO",
+      TRUE ~NA_character_)) %>%
+  mutate(
+    Protein = case_when(
+      str_detect(Condition, "GIP") ~"GIP",
+      str_detect(Condition, "GPR75") ~"GPR75",
+      str_detect(Condition, "P2XC") ~"P2XC",
+      TRUE ~NA_character_)) %>%
+  mutate(Group = factor(Group, levels = c("WT", "ULK1_KO"))) %>%
+  mutate(Protein = factor(Protein, levels = c("P2XC", "GPR75","GIP")))
+
+data_memb
+```
+
+```{r}
+condition_colors <- c("WT" = "#9bd1ae", "ULK1_KO" = "#98b5eb")
+condition_labels <- c("WT" = "WT", "ULK1_KO" = "ULK1 KO")
+
+plot_memb <- ggplot(data_memb, aes(x = Protein, y = Intensity, fill = Group)) + 
+  geom_violin(draw_quantiles = c(0.25, 0.5, 0.75)) +
+    scale_fill_manual(values = condition_colors,
+                    labels = condition_labels) +
+  coord_cartesian(ylim = c(0, 1.15)) +
+  labs(title = "Membrane cell intensity",
+       x = "",
+       y = "EGFP membrane cell intensity",
+       fill = "") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 8)) +
+    theme(
+    plot.title = element_text(size = 15, hjust = 0.5), 
+    axis.text.x = element_text(size = 15), 
+    axis.text.y = element_text(size = 15),
+    axis.title.x = element_text(size = 17),
+    axis.title.y = element_text(size = 17),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 15)
+    )
+
+pdf(file="../results/validation_experiments/EGFP_membrane_intensity_20260825.pdf", height=7, width=7)
+print(plot_memb)
+dev.off()
+```
+
+
+
+
