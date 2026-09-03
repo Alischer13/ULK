@@ -50,8 +50,8 @@ rsconnect/
 
 # Other
 .DS_Store
-meta/Samples_20241011.xlsx
-meta/multiqc_report.html
+data/meta/Samples_20241011.xlsx
+data/meta/multiqc_report.html
 
 data/fastq/*
 !data/fastq/.gitkeep
@@ -65,11 +65,17 @@ data/trimmed/*
 results/*
 !results/.gitkeep
 
-meta/*
-!meta/metadata.txt
 
 reference/*
 !reference/info_ref.txt
+
+data/meta/*
+!data/meta/metadata.txt
+
+data/fSec/*
+!data/fSec/.gitkeep
+
+data/fastqc_out_pre/
 
 scripts/slurm-50837104.out
 scripts/slurm-50844331.out
@@ -85,6 +91,41 @@ figures/
 python_scripts/
 random/
 scripts/plot_FLDA.py
+
+# Other
+.ipynb_checkpoints/
+MAGNUS/
+R_scripts/genes.csv
+R_scripts/installations.Rmd
+R_scripts/misc.R
+data/multiqc_data_post_trim/
+data/multiqc_report_pre_trim/
+submission/
+LC3_plots.pptx
+CHECKLIST.pdf
+R_scripts/installed_packages.csv
+
+# CriptoFc
+CriptoFc/results_Magnus_DE
+CriptoFc/scripts
+CriptoFc/reference
+CriptoFc/data/other
+R_scripts/TEMP_CSPR_RRVGO.R
+R_scripts/floor3hub_tests.Rmd
+data/Samples_20241011.xlsx
+data/multiqc_report.html
+resubmission/
+data/validation_data/
+data/cell_data/
+
+CriptoFc/results/*
+!CriptoFc/results/.gitkeep
+
+CriptoFc/data/meta/*
+!CriptoFc/data/meta/DE_AZ_samples.txt
+
+CriptoFc/data/kallisto_output/*
+!CriptoFc/data/kallisto_output/.gitkeep
 
 
 
